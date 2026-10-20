@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import com.example.data.dao.MediaDao
 import com.example.data.model.VaultMediaItem
 
-@Database(entities = [VaultMediaItem::class], version = 2, exportSchema = false)
+@Database(entities = [VaultMediaItem::class], version = 3, exportSchema = false)
 abstract class VaultDatabase : RoomDatabase() {
 
     abstract fun mediaDao(): MediaDao

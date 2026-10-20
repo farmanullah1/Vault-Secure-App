@@ -37,12 +37,19 @@ import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.DriveFileMove
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -67,6 +74,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -135,6 +143,14 @@ fun VaultMainScreen(
 
     val isSelectionMode = selectedItemIds.isNotEmpty()
 
+    val docsPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.importMedia(uris, isMoveSelected)
+        }
+    }
+
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
@@ -146,6 +162,14 @@ fun VaultMainScreen(
     val photoCount = allMedia.count { it.mediaType == MediaType.PHOTO.name }
     val videoCount = allMedia.count { it.mediaType == MediaType.VIDEO.name }
     val audioCount = allMedia.count { it.mediaType == MediaType.AUDIO.name }
+    val docsNotesCount = allMedia.count { it.mediaType == MediaType.DOCUMENT.name || it.mediaType == MediaType.NOTE.name }
+    val allFolders by viewModel.allFolders.collectAsState()
+    val selectedFolder by viewModel.selectedFolder.collectAsState()
+
+    var showCreateNoteDialog by remember { mutableStateOf(false) }
+    var showCreateFolderDialog by remember { mutableStateOf(false) }
+    var showMoveToFolderDialog by remember { mutableStateOf(false) }
+    var showFabActionMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -162,7 +186,7 @@ fun VaultMainScreen(
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { viewModel.setSearchQuery(it) },
-                            placeholder = { Text("Search files & folders...", color = TextMuted) },
+                            placeholder = { Text("Search files & notes...", color = TextMuted) },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = TextWhite,
@@ -195,6 +219,12 @@ fun VaultMainScreen(
                     if (isSelectionMode) {
                         IconButton(onClick = { viewModel.selectAll() }) {
                             Icon(imageVector = Icons.Default.SelectAll, contentDescription = "Select All", tint = TextWhite)
+                        }
+                        IconButton(onClick = { showMoveToFolderDialog = true }) {
+                            Icon(imageVector = Icons.Default.DriveFileMove, contentDescription = "Move to Album", tint = VaultEmerald)
+                        }
+                        IconButton(onClick = { viewModel.batchFavoriteSelected(true) }) {
+                            Icon(imageVector = Icons.Default.Favorite, contentDescription = "Favorite", tint = DangerRed)
                         }
                         IconButton(onClick = { showBatchDeleteConfirm = true }) {
                             Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete Selected", tint = DangerRed)
@@ -332,7 +362,7 @@ fun VaultMainScreen(
                                 Icon(imageVector = Icons.Default.Image, contentDescription = "Photos")
                             }
                         },
-                        label = { Text("Photos") },
+                        label = { Text("Photos", fontSize = 11.sp) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = DarkCarbon,
                             selectedTextColor = VaultEmerald,
@@ -351,7 +381,7 @@ fun VaultMainScreen(
                                 Icon(imageVector = Icons.Default.Movie, contentDescription = "Videos")
                             }
                         },
-                        label = { Text("Videos") },
+                        label = { Text("Videos", fontSize = 11.sp) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = DarkCarbon,
                             selectedTextColor = VaultEmerald,
@@ -370,7 +400,7 @@ fun VaultMainScreen(
                                 Icon(imageVector = Icons.Default.Audiotrack, contentDescription = "Audio")
                             }
                         },
-                        label = { Text("Audio") },
+                        label = { Text("Audio", fontSize = 11.sp) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = DarkCarbon,
                             selectedTextColor = VaultEmerald,
@@ -382,10 +412,46 @@ fun VaultMainScreen(
                     )
 
                     NavigationBarItem(
+                        selected = selectedTab == VaultTab.DOCS_NOTES,
+                        onClick = { viewModel.selectTab(VaultTab.DOCS_NOTES) },
+                        icon = {
+                            BadgedBox(badge = { if (docsNotesCount > 0) Badge { Text("$docsNotesCount") } }) {
+                                Icon(imageVector = Icons.Default.Description, contentDescription = "Notes")
+                            }
+                        },
+                        label = { Text("Notes", fontSize = 11.sp) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = DarkCarbon,
+                            selectedTextColor = VaultEmerald,
+                            indicatorColor = VaultEmerald,
+                            unselectedIconColor = TextMuted,
+                            unselectedTextColor = TextMuted
+                        ),
+                        modifier = Modifier.testTag("tab_notes")
+                    )
+
+                    NavigationBarItem(
+                        selected = selectedTab == VaultTab.ALBUMS,
+                        onClick = { viewModel.selectTab(VaultTab.ALBUMS) },
+                        icon = {
+                            Icon(imageVector = Icons.Default.Folder, contentDescription = "Albums")
+                        },
+                        label = { Text("Albums", fontSize = 11.sp) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = DarkCarbon,
+                            selectedTextColor = VaultEmerald,
+                            indicatorColor = VaultEmerald,
+                            unselectedIconColor = TextMuted,
+                            unselectedTextColor = TextMuted
+                        ),
+                        modifier = Modifier.testTag("tab_albums")
+                    )
+
+                    NavigationBarItem(
                         selected = selectedTab == VaultTab.SETTINGS,
                         onClick = { viewModel.selectTab(VaultTab.SETTINGS) },
                         icon = { Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings") },
-                        label = { Text("Settings") },
+                        label = { Text("Settings", fontSize = 11.sp) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = DarkCarbon,
                             selectedTextColor = VaultEmerald,
@@ -401,136 +467,274 @@ fun VaultMainScreen(
         floatingActionButton = {
             if (selectedTab != VaultTab.SETTINGS && !isSelectionMode) {
                 FloatingActionButton(
-                    onClick = { showImportChoiceDialog = true },
+                    onClick = { showFabActionMenu = true },
                     containerColor = VaultEmerald,
                     contentColor = DarkCarbon,
                     modifier = Modifier.testTag("import_media_fab")
                 ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "Import Media")
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Add to Vault")
                 }
             }
         },
         containerColor = DarkCarbon,
         modifier = modifier.testTag("vault_main_screen")
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when (selectedTab) {
-                VaultTab.PHOTOS -> {
-                    if (filteredMedia.isEmpty()) {
-                        EmptyVaultState(
-                            title = if (showFavoritesOnly) "No Favorite Photos" else "No Secured Photos",
-                            subtitle = if (showFavoritesOnly) "Star photos to keep them in quick favorites." else "Tap + to import sensitive photos into your private safe.",
-                            icon = Icons.Default.Image
-                        )
-                    } else {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(3),
-                            contentPadding = PaddingValues(8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxSize()
+            // Selected Folder Filter Banner
+            val activeFolder = selectedFolder
+            if (activeFolder != null) {
+                Surface(
+                    color = SurfaceCard,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.FolderOpen, contentDescription = null, tint = VaultEmerald, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "Album: $activeFolder", color = TextWhite, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        IconButton(
+                            onClick = { viewModel.selectFolder(null) },
+                            modifier = Modifier.size(24.dp)
                         ) {
-                            items(filteredMedia, key = { it.id }) { item ->
-                                val isSelected = selectedItemIds.contains(item.id)
-                                PhotoGridItem(
-                                    item = item,
-                                    isSelected = isSelected,
-                                    isSelectionMode = isSelectionMode,
-                                    onClick = {
-                                        if (isSelectionMode) {
-                                            viewModel.toggleItemSelection(item.id)
-                                        } else {
-                                            viewModel.navigateTo(Screen.PhotoViewer(item.id))
-                                        }
-                                    },
-                                    onLongClick = {
-                                        viewModel.toggleItemSelection(item.id)
-                                    }
-                                )
-                            }
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "Clear Album Filter", tint = TextMuted, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
+            }
 
-                VaultTab.VIDEOS -> {
-                    if (filteredMedia.isEmpty()) {
-                        EmptyVaultState(
-                            title = if (showFavoritesOnly) "No Favorite Videos" else "No Secured Videos",
-                            subtitle = if (showFavoritesOnly) "Star videos to access them instantly." else "Tap + to import and hide private video files behind .nomedia protection.",
-                            icon = Icons.Default.VideoLibrary
-                        )
-                    } else {
+            Box(modifier = Modifier.fillMaxSize()) {
+                when (selectedTab) {
+                    VaultTab.ALL -> {
+                        if (filteredMedia.isEmpty()) {
+                            EmptyVaultState(
+                                title = "Safe is Empty",
+                                subtitle = "Tap + to secure photos, videos, audio, or private notes.",
+                                icon = Icons.Default.FolderOpen
+                            )
+                        } else {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(3),
+                                contentPadding = PaddingValues(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(filteredMedia, key = { it.id }) { item ->
+                                    val isSelected = selectedItemIds.contains(item.id)
+                                    PhotoGridItem(
+                                        item = item,
+                                        isSelected = isSelected,
+                                        isSelectionMode = isSelectionMode,
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                viewModel.toggleItemSelection(item.id)
+                                            } else {
+                                                when (item.mediaType) {
+                                                    MediaType.PHOTO.name -> viewModel.navigateTo(Screen.PhotoViewer(item.id))
+                                                    MediaType.VIDEO.name -> viewModel.navigateTo(Screen.VideoPlayer(item.id))
+                                                    MediaType.AUDIO.name -> {
+                                                        viewModel.setActiveAudio(item)
+                                                        viewModel.navigateTo(Screen.AudioPlayer(item.id))
+                                                    }
+                                                    MediaType.NOTE.name -> viewModel.navigateTo(Screen.NoteViewer(item.id))
+                                                    else -> {}
+                                                }
+                                            }
+                                        },
+                                        onLongClick = {
+                                            viewModel.toggleItemSelection(item.id)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    VaultTab.PHOTOS -> {
+                        if (filteredMedia.isEmpty()) {
+                            EmptyVaultState(
+                                title = if (showFavoritesOnly) "No Favorite Photos" else "No Secured Photos",
+                                subtitle = if (showFavoritesOnly) "Star photos to keep them in quick favorites." else "Tap + to import sensitive photos into your private safe.",
+                                icon = Icons.Default.Image
+                            )
+                        } else {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(3),
+                                contentPadding = PaddingValues(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(filteredMedia, key = { it.id }) { item ->
+                                    val isSelected = selectedItemIds.contains(item.id)
+                                    PhotoGridItem(
+                                        item = item,
+                                        isSelected = isSelected,
+                                        isSelectionMode = isSelectionMode,
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                viewModel.toggleItemSelection(item.id)
+                                            } else {
+                                                viewModel.navigateTo(Screen.PhotoViewer(item.id))
+                                            }
+                                        },
+                                        onLongClick = {
+                                            viewModel.toggleItemSelection(item.id)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    VaultTab.VIDEOS -> {
+                        if (filteredMedia.isEmpty()) {
+                            EmptyVaultState(
+                                title = if (showFavoritesOnly) "No Favorite Videos" else "No Secured Videos",
+                                subtitle = if (showFavoritesOnly) "Star videos to access them instantly." else "Tap + to import and hide private video files behind .nomedia protection.",
+                                icon = Icons.Default.VideoLibrary
+                            )
+                        } else {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                contentPadding = PaddingValues(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(filteredMedia, key = { it.id }) { item ->
+                                    val isSelected = selectedItemIds.contains(item.id)
+                                    VideoGridItem(
+                                        item = item,
+                                        isSelected = isSelected,
+                                        isSelectionMode = isSelectionMode,
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                viewModel.toggleItemSelection(item.id)
+                                            } else {
+                                                viewModel.navigateTo(Screen.VideoPlayer(item.id))
+                                            }
+                                        },
+                                        onLongClick = {
+                                            viewModel.toggleItemSelection(item.id)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    VaultTab.AUDIO -> {
+                        if (filteredMedia.isEmpty()) {
+                            EmptyVaultState(
+                                title = if (showFavoritesOnly) "No Favorite Audio" else "No Secured Audio",
+                                subtitle = "Tap + to import voice recordings or confidential music files.",
+                                icon = Icons.Default.Audiotrack
+                            )
+                        } else {
+                            LazyColumn(
+                                contentPadding = PaddingValues(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(filteredMedia, key = { it.id }) { item ->
+                                    val isSelected = selectedItemIds.contains(item.id)
+                                    AudioListItem(
+                                        item = item,
+                                        isSelected = isSelected,
+                                        isSelectionMode = isSelectionMode,
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                viewModel.toggleItemSelection(item.id)
+                                            } else {
+                                                viewModel.setActiveAudio(item)
+                                                viewModel.navigateTo(Screen.AudioPlayer(item.id))
+                                            }
+                                        },
+                                        onLongClick = {
+                                            viewModel.toggleItemSelection(item.id)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    VaultTab.DOCS_NOTES -> {
+                        if (filteredMedia.isEmpty()) {
+                            EmptyVaultState(
+                                title = if (showFavoritesOnly) "No Favorite Notes" else "No Documents or Notes",
+                                subtitle = "Tap + to write an encrypted private note or import documents.",
+                                icon = Icons.Default.Description
+                            )
+                        } else {
+                            LazyColumn(
+                                contentPadding = PaddingValues(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(filteredMedia, key = { it.id }) { item ->
+                                    val isSelected = selectedItemIds.contains(item.id)
+                                    DocNoteListItem(
+                                        item = item,
+                                        isSelected = isSelected,
+                                        isSelectionMode = isSelectionMode,
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                viewModel.toggleItemSelection(item.id)
+                                            } else {
+                                                if (item.mediaType == MediaType.NOTE.name) {
+                                                    viewModel.navigateTo(Screen.NoteViewer(item.id))
+                                                }
+                                            }
+                                        },
+                                        onLongClick = {
+                                            viewModel.toggleItemSelection(item.id)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    VaultTab.ALBUMS -> {
+                        val folders = allFolders.ifEmpty { listOf("Default") }
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            items(filteredMedia, key = { it.id }) { item ->
-                                val isSelected = selectedItemIds.contains(item.id)
-                                VideoGridItem(
-                                    item = item,
-                                    isSelected = isSelected,
-                                    isSelectionMode = isSelectionMode,
-                                    onClick = {
-                                        if (isSelectionMode) {
-                                            viewModel.toggleItemSelection(item.id)
-                                        } else {
-                                            viewModel.navigateTo(Screen.VideoPlayer(item.id))
-                                        }
-                                    },
-                                    onLongClick = {
-                                        viewModel.toggleItemSelection(item.id)
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                VaultTab.AUDIO -> {
-                    if (filteredMedia.isEmpty()) {
-                        EmptyVaultState(
-                            title = if (showFavoritesOnly) "No Favorite Audio" else "No Secured Audio",
-                            subtitle = "Tap + to import voice recordings or confidential music files.",
-                            icon = Icons.Default.Audiotrack
-                        )
-                    } else {
-                        LazyColumn(
                             contentPadding = PaddingValues(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            items(filteredMedia, key = { it.id }) { item ->
-                                val isSelected = selectedItemIds.contains(item.id)
-                                AudioListItem(
-                                    item = item,
-                                    isSelected = isSelected,
-                                    isSelectionMode = isSelectionMode,
+                            items(folders) { folderName ->
+                                val count = allMedia.count { it.folderName.equals(folderName, ignoreCase = true) }
+                                AlbumGridCard(
+                                    folderName = folderName,
+                                    count = count,
+                                    isSelected = selectedFolder?.equals(folderName, ignoreCase = true) == true,
                                     onClick = {
-                                        if (isSelectionMode) {
-                                            viewModel.toggleItemSelection(item.id)
-                                        } else {
-                                            viewModel.setActiveAudio(item)
-                                            viewModel.navigateTo(Screen.AudioPlayer(item.id))
-                                        }
-                                    },
-                                    onLongClick = {
-                                        viewModel.toggleItemSelection(item.id)
+                                        viewModel.selectFolder(folderName)
+                                        viewModel.selectTab(VaultTab.PHOTOS)
                                     }
                                 )
                             }
                         }
                     }
-                }
 
-                VaultTab.SETTINGS -> {
-                    SettingsScreen(viewModel = viewModel)
+                    VaultTab.SETTINGS -> {
+                        SettingsScreen(viewModel = viewModel)
+                    }
                 }
             }
         }
@@ -633,6 +837,274 @@ fun VaultMainScreen(
             onComplete = {
                 showFirstTimeSetup = false
             }
+        )
+    }
+
+    // FAB Speed-Dial / Action Menu
+    if (showFabActionMenu) {
+        AlertDialog(
+            onDismissRequest = { showFabActionMenu = false },
+            title = { Text("Add to Private Safe", color = TextWhite, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Option 1: Import Photos & Videos
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showFabActionMenu = false
+                                showImportChoiceDialog = true
+                            },
+                        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
+                    ) {
+                        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.Image, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Import Photos & Videos", color = TextWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Text("Select from device gallery or internal storage", color = TextMuted, fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    // Option 2: Import Files & Documents
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showFabActionMenu = false
+                                docsPicker.launch(arrayOf("*/*"))
+                            },
+                        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
+                    ) {
+                        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.Description, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Import Files & Documents", color = TextWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Text("PDFs, archives, confidential office docs", color = TextMuted, fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    // Option 3: Write Secret Note
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showFabActionMenu = false
+                                showCreateNoteDialog = true
+                            },
+                        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
+                    ) {
+                        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.NoteAdd, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Write Secret Note", color = TextWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Text("Encrypted passwords, text records, thoughts", color = TextMuted, fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    // Option 4: Create Album
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showFabActionMenu = false
+                                showCreateFolderDialog = true
+                            },
+                        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
+                    ) {
+                        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.CreateNewFolder, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Create New Album", color = TextWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Text("Organize media into custom folders", color = TextMuted, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showFabActionMenu = false }) {
+                    Text("Close", color = TextMuted)
+                }
+            },
+            containerColor = SurfaceElevated
+        )
+    }
+
+    // Create Secret Note Dialog
+    if (showCreateNoteDialog) {
+        var noteTitle by remember { mutableStateOf("") }
+        var noteBody by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showCreateNoteDialog = false },
+            title = { Text("New Secret Note", color = TextWhite, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = noteTitle,
+                        onValueChange = { noteTitle = it },
+                        label = { Text("Title") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextWhite,
+                            unfocusedTextColor = TextWhite,
+                            focusedBorderColor = VaultEmerald
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = noteBody,
+                        onValueChange = { noteBody = it },
+                        label = { Text("Note Content") },
+                        minLines = 4,
+                        maxLines = 8,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextWhite,
+                            unfocusedTextColor = TextWhite,
+                            focusedBorderColor = VaultEmerald
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val title = noteTitle.ifBlank { "Untitled Note" }
+                        viewModel.createNote(title, noteBody, selectedFolder ?: "Default")
+                        showCreateNoteDialog = false
+                    }
+                ) {
+                    Text("Save to Vault", color = VaultEmerald, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateNoteDialog = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            },
+            containerColor = SurfaceElevated
+        )
+    }
+
+    // Create Album Dialog
+    if (showCreateFolderDialog) {
+        var albumName by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showCreateFolderDialog = false },
+            title = { Text("Create New Album", color = TextWhite, fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = albumName,
+                    onValueChange = { albumName = it },
+                    label = { Text("Album Name") },
+                    placeholder = { Text("e.g. Travel, Personal, Documents") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextWhite,
+                        unfocusedTextColor = TextWhite,
+                        focusedBorderColor = VaultEmerald
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (albumName.isNotBlank()) {
+                            viewModel.selectFolder(albumName.trim())
+                            showCreateFolderDialog = false
+                        }
+                    }
+                ) {
+                    Text("Create", color = VaultEmerald, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateFolderDialog = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            },
+            containerColor = SurfaceElevated
+        )
+    }
+
+    // Move to Album Dialog
+    if (showMoveToFolderDialog) {
+        var customFolder by remember { mutableStateOf("") }
+        val availableFolders = (allFolders + listOf("Default", "Personal", "Work", "Archive")).distinct()
+
+        AlertDialog(
+            onDismissRequest = { showMoveToFolderDialog = false },
+            title = { Text("Move ${selectedItemIds.size} Item(s) to Album", color = TextWhite, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Select destination album:", color = TextMuted, fontSize = 13.sp)
+
+                    availableFolders.forEach { folderName ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.batchMoveSelected(folderName)
+                                    showMoveToFolderDialog = false
+                                },
+                            colors = CardDefaults.cardColors(containerColor = SurfaceCard)
+                        ) {
+                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(imageVector = Icons.Default.Folder, contentDescription = null, tint = VaultEmerald, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(folderName, color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = customFolder,
+                        onValueChange = { customFolder = it },
+                        placeholder = { Text("Or type new album name...") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextWhite,
+                            unfocusedTextColor = TextWhite,
+                            focusedBorderColor = VaultEmerald
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                if (customFolder.isNotBlank()) {
+                    TextButton(
+                        onClick = {
+                            viewModel.batchMoveSelected(customFolder.trim())
+                            showMoveToFolderDialog = false
+                        }
+                    ) {
+                        Text("Move to New Album", color = VaultEmerald)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMoveToFolderDialog = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            },
+            containerColor = SurfaceElevated
         )
     }
 }
@@ -931,5 +1403,166 @@ fun EmptyVaultState(title: String, subtitle: String, icon: androidx.compose.ui.g
             modifier = Modifier.padding(top = 6.dp),
             lineHeight = 18.sp
         )
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun DocNoteListItem(
+    item: VaultMediaItem,
+    isSelected: Boolean,
+    isSelectionMode: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) VaultEmerald else SurfaceBorder,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .testTag("doc_note_item_${item.id}"),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceCard)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isSelectionMode) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(if (isSelected) VaultEmerald else DarkCarbon.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = DarkCarbon, modifier = Modifier.size(16.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(VaultEmerald.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (item.mediaType == MediaType.NOTE.name) Icons.Default.Edit else Icons.Default.Description,
+                        contentDescription = null,
+                        tint = VaultEmerald,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.fileName,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextWhite,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (item.mediaType == MediaType.NOTE.name && item.noteContent.isNotBlank()) {
+                    Text(
+                        text = item.noteContent,
+                        fontSize = 12.sp,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else {
+                    val sizeKb = item.fileSizeBytes / 1024
+                    Text(
+                        text = if (sizeKb > 0) "$sizeKb KB • ${item.folderName}" else item.folderName,
+                        fontSize = 12.sp,
+                        color = TextDim
+                    )
+                }
+            }
+
+            if (item.isFavorite) {
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = "Favorite",
+                    tint = DangerRed,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AlbumGridCard(
+    folderName: String,
+    count: Int,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) VaultEmerald else SurfaceBorder,
+                shape = RoundedCornerShape(16.dp)
+            )
+            .testTag("album_card_$folderName"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceCard)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(VaultEmerald.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isSelected) Icons.Default.FolderOpen else Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = VaultEmerald,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = folderName,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextWhite,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "$count file(s)",
+                fontSize = 12.sp,
+                color = TextMuted
+            )
+        }
     }
 }

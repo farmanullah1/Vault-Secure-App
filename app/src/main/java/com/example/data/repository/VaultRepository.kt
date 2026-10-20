@@ -279,6 +279,46 @@ class VaultRepository(
         securityManager.safeResetAuth()
     }
 
+    val allFolders: Flow<List<String>> = mediaDao.getAllFolders()
+
+    fun getMediaByFolder(folderName: String): Flow<List<VaultMediaItem>> = mediaDao.getMediaByFolder(folderName)
+
+    fun getDocumentsAndNotes(): Flow<List<VaultMediaItem>> = mediaDao.getDocumentsAndNotes()
+
+    suspend fun saveNote(title: String, content: String, folderName: String = "Default"): Long = withContext(Dispatchers.IO) {
+        val fileName = if (title.endsWith(".txt") || title.endsWith(".md")) title else "$title.txt"
+        val noteItem = VaultMediaItem(
+            uriString = "note://${System.currentTimeMillis()}",
+            fileName = fileName,
+            mimeType = "text/plain",
+            mediaType = MediaType.NOTE.name,
+            fileSizeBytes = content.toByteArray().size.toLong(),
+            dateAdded = System.currentTimeMillis(),
+            folderName = folderName,
+            noteContent = content
+        )
+        mediaDao.insert(noteItem)
+    }
+
+    suspend fun updateNote(id: Long, title: String, content: String) = withContext(Dispatchers.IO) {
+        val existing = mediaDao.getMediaById(id) ?: return@withContext
+        val fileName = if (title.endsWith(".txt") || title.endsWith(".md")) title else "$title.txt"
+        val updated = existing.copy(
+            fileName = fileName,
+            noteContent = content,
+            fileSizeBytes = content.toByteArray().size.toLong()
+        )
+        mediaDao.update(updated)
+    }
+
+    suspend fun batchMoveToFolder(ids: List<Long>, folderName: String) = withContext(Dispatchers.IO) {
+        mediaDao.updateFolderForIds(ids, folderName)
+    }
+
+    suspend fun batchSetFavorite(ids: List<Long>, isFav: Boolean) = withContext(Dispatchers.IO) {
+        mediaDao.updateFavoriteForIds(ids, isFav)
+    }
+
     private fun getFileNameAndSize(uri: Uri): Pair<String?, Long> {
         var name: String? = null
         var size: Long = 0L

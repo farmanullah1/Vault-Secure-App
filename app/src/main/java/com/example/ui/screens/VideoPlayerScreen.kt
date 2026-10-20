@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
@@ -455,6 +456,44 @@ fun VideoPlayerScreen(
                                     )
                                 }
                             }
+                        }
+
+                        // Picture-in-Picture Button
+                        IconButton(
+                            onClick = {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                    val activity = context as? Activity
+                                    try {
+                                        showControls = false
+                                        activity?.enterPictureInPictureMode(android.app.PictureInPictureParams.Builder().build())
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "PiP not supported on this device", Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    Toast.makeText(context, "PiP requires Android 8.0+", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.testTag("video_pip_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.PictureInPictureAlt, contentDescription = "Picture-in-Picture", tint = TextWhite)
+                        }
+
+                        // Screen Rotation Toggle Button
+                        IconButton(
+                            onClick = {
+                                val activity = context as? Activity
+                                if (activity != null) {
+                                    val currentOrientation = activity.requestedOrientation
+                                    activity.requestedOrientation = if (currentOrientation == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
+                                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    } else {
+                                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                    }
+                                }
+                            },
+                            modifier = Modifier.testTag("video_rotate_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.ScreenRotation, contentDescription = "Rotate Screen", tint = TextWhite)
                         }
 
                         // Open with External Player (VLC / MX)

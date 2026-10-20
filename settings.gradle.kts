@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "SIM Services"
+rootProject.name = "SIM Service"
 
 include(":app")

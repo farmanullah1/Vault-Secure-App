@@ -11,6 +11,18 @@ import java.security.spec.InvalidKeySpecException
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
+enum class DisguiseMode {
+    SIM_SERVICE,
+    CALCULATOR,
+    NOTES
+}
+
+data class IntruderLog(
+    val timestamp: Long,
+    val attemptedPinLength: Int,
+    val failedCount: Int
+)
+
 /**
  * PinSecurityManager handles PIN setup, cryptographic hashing (PBKDF2-HMAC-SHA256),
  * decoy PIN verification, lockout rate-limiting, and auto-lock timeouts using SystemClock.elapsedRealtime().
@@ -39,6 +51,9 @@ class PinSecurityManager(context: Context) {
         private const val KEY_JAZZ_HELPLINE = "key_jazz_helpline"
         private const val KEY_ZONG_HELPLINE = "key_zong_helpline"
         private const val KEY_VAULT_FOLDER_URI = "key_vault_folder_uri"
+        private const val KEY_DISGUISE_MODE = "key_disguise_mode"
+        private const val KEY_FLIP_TO_LOCK = "key_flip_to_lock"
+        private const val KEY_INTRUDER_LOGS = "key_intruder_logs"
 
         private const val ITERATIONS = 12000
         private const val KEY_LENGTH = 256
@@ -55,6 +70,41 @@ class PinSecurityManager(context: Context) {
         // Verified Pakistani Telecom Customer Care Helplines (Section 10.2)
         const val DEFAULT_JAZZ_HELPLINE = "111"
         const val DEFAULT_ZONG_HELPLINE = "310"
+    }
+
+    var disguiseMode: DisguiseMode
+        get() {
+            val name = prefs.getString(KEY_DISGUISE_MODE, DisguiseMode.SIM_SERVICE.name)
+            return try { DisguiseMode.valueOf(name ?: DisguiseMode.SIM_SERVICE.name) } catch (e: Exception) { DisguiseMode.SIM_SERVICE }
+        }
+        set(value) = prefs.edit().putString(KEY_DISGUISE_MODE, value.name).apply()
+
+    var isFlipToLockEnabled: Boolean
+        get() = prefs.getBoolean(KEY_FLIP_TO_LOCK, true)
+        set(value) = prefs.edit().putBoolean(KEY_FLIP_TO_LOCK, value).apply()
+
+    fun recordIntruderAttempt(pinLength: Int, failedCount: Int) {
+        val entry = "${System.currentTimeMillis()}:$pinLength:$failedCount"
+        val existing = prefs.getStringSet(KEY_INTRUDER_LOGS, emptySet()) ?: emptySet()
+        val updated = (existing + entry).toList().takeLast(30).toSet()
+        prefs.edit().putStringSet(KEY_INTRUDER_LOGS, updated).apply()
+    }
+
+    fun getIntruderLogs(): List<IntruderLog> {
+        val entries = prefs.getStringSet(KEY_INTRUDER_LOGS, emptySet()) ?: emptySet()
+        return entries.mapNotNull { str ->
+            val parts = str.split(":")
+            if (parts.size >= 3) {
+                val time = parts[0].toLongOrNull() ?: return@mapNotNull null
+                val len = parts[1].toIntOrNull() ?: 0
+                val count = parts[2].toIntOrNull() ?: 1
+                IntruderLog(time, len, count)
+            } else null
+        }.sortedByDescending { it.timestamp }
+    }
+
+    fun clearIntruderLogs() {
+        prefs.edit().remove(KEY_INTRUDER_LOGS).apply()
     }
 
     val isPinSetup: Boolean
@@ -213,6 +263,7 @@ class PinSecurityManager(context: Context) {
         } else {
             val failedAttempts = prefs.getInt(KEY_FAILED_ATTEMPTS, 0) + 1
             val editor = prefs.edit().putInt(KEY_FAILED_ATTEMPTS, failedAttempts)
+            recordIntruderAttempt(pin.length, failedAttempts)
 
             // Rate limiting per Spec 9.3:
             // 5 wrong attempts: 30s, 6 wrong: 60s, 7 wrong: 300s, 8+ wrong: 900s (15 min cap)

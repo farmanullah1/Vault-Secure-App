@@ -19,5 +19,7 @@ data class VaultMediaItem(
     val width: Int = 0,
     val height: Int = 0,
     val isFavorite: Boolean = false,
-    val relativePath: String = ""
+    val relativePath: String = "",
+    val folderName: String = "Default",
+    val noteContent: String = ""
 )

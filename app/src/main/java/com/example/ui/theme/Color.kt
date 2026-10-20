@@ -41,6 +41,8 @@ val SurfaceBorder = VaultOutline
 val VaultEmerald = VaultViolet
 val VaultEmeraldContainer = Color(0xFF2E1065)
 val VaultEmeraldLight = VaultCyan
+val ZongAmber = Color(0xFFF59E0B)
+val ZongAmberContainer = Color(0xFF78350F)
 
 val TextWhite = Color(0xFFF8FAFC)
 val TextMuted = Color(0xFF94A3B8)

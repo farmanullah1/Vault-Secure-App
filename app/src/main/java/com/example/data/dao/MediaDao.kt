@@ -54,6 +54,21 @@ interface MediaDao {
     @Query("DELETE FROM vault_media WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
 
+    @Query("SELECT DISTINCT folderName FROM vault_media WHERE folderName != '' ORDER BY folderName ASC")
+    fun getAllFolders(): Flow<List<String>>
+
+    @Query("SELECT * FROM vault_media WHERE folderName = :folderName ORDER BY dateAdded DESC")
+    fun getMediaByFolder(folderName: String): Flow<List<VaultMediaItem>>
+
+    @Query("SELECT * FROM vault_media WHERE mediaType IN ('DOCUMENT', 'NOTE') ORDER BY dateAdded DESC")
+    fun getDocumentsAndNotes(): Flow<List<VaultMediaItem>>
+
+    @Query("UPDATE vault_media SET folderName = :folderName WHERE id IN (:ids)")
+    suspend fun updateFolderForIds(ids: List<Long>, folderName: String)
+
+    @Query("UPDATE vault_media SET isFavorite = :isFav WHERE id IN (:ids)")
+    suspend fun updateFavoriteForIds(ids: List<Long>, isFav: Boolean)
+
     @Query("DELETE FROM vault_media")
     suspend fun clearAll()
 }

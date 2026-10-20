@@ -26,13 +26,39 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.Screen
 import com.example.viewmodel.VaultViewModel
 
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import com.example.ui.screens.CalculatorCoverScreen
+import com.example.ui.screens.IntruderLogsScreen
+import com.example.ui.screens.NoteViewerScreen
+import com.example.ui.screens.NotesCoverScreen
+
 class MainActivity : FragmentActivity() {
 
     private val viewModel: VaultViewModel by viewModels()
+    private var sensorManager: SensorManager? = null
+    private var accelerometer: Sensor? = null
+
+    private val sensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent?) {
+            if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
+                val z = event.values[2]
+                if (z < -7.0f && viewModel.isUnlocked.value && viewModel.securityManager.isFlipToLockEnabled) {
+                    viewModel.lockVault()
+                }
+            }
+        }
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        sensorManager = getSystemService(SENSOR_SERVICE) as? SensorManager
+        accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
         // Edge-to-edge system bar contrast
         WindowCompat.getInsetsController(window, window.decorView).apply {
@@ -64,6 +90,14 @@ class MainActivity : FragmentActivity() {
         super.onResume()
         applySecurityFlags()
         checkAutoLockTimeout()
+        accelerometer?.let {
+            sensorManager?.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        sensorManager?.unregisterListener(sensorListener)
     }
 
     private fun applySecurityFlags() {
@@ -121,6 +155,14 @@ fun AppNavigation(viewModel: VaultViewModel) {
             SimCoverScreen(viewModel = viewModel)
         }
 
+        is Screen.CalculatorCover -> {
+            CalculatorCoverScreen(viewModel = viewModel)
+        }
+
+        is Screen.NotesCover -> {
+            NotesCoverScreen(viewModel = viewModel)
+        }
+
         is Screen.VaultMain -> {
             VaultMainScreen(viewModel = viewModel)
         }
@@ -166,8 +208,28 @@ fun AppNavigation(viewModel: VaultViewModel) {
             }
         }
 
+        is Screen.NoteViewer -> {
+            val item = allMedia.find { it.id == screen.mediaId }
+            if (item != null) {
+                NoteViewerScreen(
+                    item = item,
+                    viewModel = viewModel,
+                    onBack = { viewModel.navigateTo(Screen.VaultMain) }
+                )
+            } else {
+                viewModel.navigateTo(Screen.VaultMain)
+            }
+        }
+
         is Screen.GalleryChecklist -> {
             GalleryChecklistScreen(
+                viewModel = viewModel,
+                onBack = { viewModel.navigateTo(Screen.VaultMain) }
+            )
+        }
+
+        is Screen.IntruderLogs -> {
+            IntruderLogsScreen(
                 viewModel = viewModel,
                 onBack = { viewModel.navigateTo(Screen.VaultMain) }
             )

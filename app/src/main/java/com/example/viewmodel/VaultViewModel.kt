@@ -18,19 +18,28 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import com.example.security.DisguiseMode
+
 sealed class Screen {
     object SimCover : Screen()
+    object CalculatorCover : Screen()
+    object NotesCover : Screen()
     object VaultMain : Screen()
     data class PhotoViewer(val mediaId: Long) : Screen()
     data class VideoPlayer(val mediaId: Long) : Screen()
     data class AudioPlayer(val mediaId: Long) : Screen()
+    data class NoteViewer(val mediaId: Long) : Screen()
     object GalleryChecklist : Screen()
+    object IntruderLogs : Screen()
 }
 
 enum class VaultTab {
+    ALL,
     PHOTOS,
     VIDEOS,
     AUDIO,
+    DOCS_NOTES,
+    ALBUMS,
     SETTINGS
 }
 
@@ -47,7 +56,13 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     private val database = VaultDatabase.getInstance(application)
     val repository = VaultRepository(application, database.mediaDao(), securityManager)
 
-    private val _currentScreen = MutableStateFlow<Screen>(Screen.SimCover)
+    private val _currentScreen = MutableStateFlow<Screen>(
+        when (securityManager.disguiseMode) {
+            DisguiseMode.CALCULATOR -> Screen.CalculatorCover
+            DisguiseMode.NOTES -> Screen.NotesCover
+            else -> Screen.SimCover
+        }
+    )
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
     private val _selectedTab = MutableStateFlow(VaultTab.PHOTOS)
@@ -80,6 +95,12 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     private val _showFavoritesOnly = MutableStateFlow(false)
     val showFavoritesOnly: StateFlow<Boolean> = _showFavoritesOnly.asStateFlow()
 
+    private val _selectedFolder = MutableStateFlow<String?>(null)
+    val selectedFolder: StateFlow<String?> = _selectedFolder.asStateFlow()
+
+    val allFolders: StateFlow<List<String>> = repository.allFolders
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val allMedia: StateFlow<List<VaultMediaItem>> = repository.allMedia
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -88,25 +109,41 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         _selectedTab,
         _searchQuery,
         _sortOption,
-        _showFavoritesOnly
-    ) { mediaList, tab, query, sort, favsOnly ->
+        combine(_showFavoritesOnly, _selectedFolder) { favs, folder -> Pair(favs, folder) }
+    ) { mediaList, tab, query, sort, favsAndFolder ->
+        val favsOnly = favsAndFolder.first
+        val folder = favsAndFolder.second
+
         val typeFiltered = when (tab) {
+            VaultTab.ALL -> mediaList
             VaultTab.PHOTOS -> mediaList.filter { it.mediaType == MediaType.PHOTO.name }
             VaultTab.VIDEOS -> mediaList.filter { it.mediaType == MediaType.VIDEO.name }
             VaultTab.AUDIO -> mediaList.filter { it.mediaType == MediaType.AUDIO.name }
-            VaultTab.SETTINGS -> emptyList()
+            VaultTab.DOCS_NOTES -> mediaList.filter { it.mediaType == MediaType.DOCUMENT.name || it.mediaType == MediaType.NOTE.name }
+            VaultTab.ALBUMS -> if (folder != null) mediaList.filter { it.folderName.equals(folder, ignoreCase = true) } else mediaList
+            else -> emptyList()
+        }
+
+        val folderFiltered = if (folder != null && tab != VaultTab.ALBUMS) {
+            typeFiltered.filter { it.folderName.equals(folder, ignoreCase = true) }
+        } else {
+            typeFiltered
         }
 
         val favFiltered = if (favsOnly) {
-            typeFiltered.filter { it.isFavorite }
+            folderFiltered.filter { it.isFavorite }
         } else {
-            typeFiltered
+            folderFiltered
         }
 
         val searched = if (query.isBlank()) {
             favFiltered
         } else {
-            favFiltered.filter { it.fileName.contains(query, ignoreCase = true) }
+            favFiltered.filter {
+                it.fileName.contains(query, ignoreCase = true) ||
+                it.noteContent.contains(query, ignoreCase = true) ||
+                it.folderName.contains(query, ignoreCase = true)
+            }
         }
 
         when (sort) {
@@ -170,6 +207,40 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun selectFolder(folder: String?) {
+        _selectedFolder.value = folder
+    }
+
+    fun batchMoveSelected(folderName: String) {
+        val ids = _selectedItemIds.value.toList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            repository.batchMoveToFolder(ids, folderName)
+            _selectedItemIds.value = emptySet()
+        }
+    }
+
+    fun batchFavoriteSelected(isFav: Boolean) {
+        val ids = _selectedItemIds.value.toList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            repository.batchSetFavorite(ids, isFav)
+            _selectedItemIds.value = emptySet()
+        }
+    }
+
+    fun createNote(title: String, content: String, folder: String = "Default") {
+        viewModelScope.launch {
+            repository.saveNote(title, content, folder)
+        }
+    }
+
+    fun updateNote(id: Long, title: String, content: String) {
+        viewModelScope.launch {
+            repository.updateNote(id, title, content)
+        }
+    }
+
     fun unlockVault() {
         _isUnlocked.value = true
         _currentScreen.value = Screen.VaultMain
@@ -182,7 +253,12 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         _activeAudioItem.value = null
         _isAudioPlaying.value = false
         _selectedItemIds.value = emptySet()
-        _currentScreen.value = Screen.SimCover
+        securityManager.isDecoySessionActive = false
+        _currentScreen.value = when (securityManager.disguiseMode) {
+            DisguiseMode.CALCULATOR -> Screen.CalculatorCover
+            DisguiseMode.NOTES -> Screen.NotesCover
+            else -> Screen.SimCover
+        }
     }
 
     fun refreshNoMediaStatus() {

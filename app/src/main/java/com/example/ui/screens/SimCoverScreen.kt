@@ -86,6 +86,8 @@ import com.example.ui.theme.VaultAccentBrush
 import com.example.ui.theme.VaultViolet
 import com.example.viewmodel.VaultViewModel
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+
 /**
  * Cover screen "SIM Service" (the disguise) — exact layout conforming to Master Build Spec v3 (Section 8.1).
  * High-contrast pure black system-utility look.
@@ -93,7 +95,7 @@ import com.example.viewmodel.VaultViewModel
  * Two clean list rows ("Jazz" and "Zong") with SIM slot icons and chevrons in the upper-middle.
  * Completely empty black screen below. No menus, no overflow, no fake cards, no vault hints.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SimCoverScreen(
     viewModel: VaultViewModel,

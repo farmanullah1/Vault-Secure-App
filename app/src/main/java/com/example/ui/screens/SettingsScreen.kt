@@ -39,6 +39,12 @@ import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SimCard
+import com.example.security.DisguiseMode
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -105,6 +111,9 @@ fun SettingsScreen(
     var hapticEnabled by remember { mutableStateOf(securityManager.isHapticEnabled) }
     var shuffleKeypadEnabled by remember { mutableStateOf(securityManager.isShuffleKeypadEnabled) }
     var currentAutoLock by remember { mutableIntStateOf(securityManager.autoLockSeconds) }
+    var showDisguiseDialog by remember { mutableStateOf(false) }
+    var currentDisguise by remember { mutableStateOf(securityManager.disguiseMode) }
+    var flipToLockEnabled by remember { mutableStateOf(securityManager.isFlipToLockEnabled) }
 
     val autoLockOptions = listOf(
         Pair(PinSecurityManager.AUTO_LOCK_IMMEDIATE, "Immediate (on background or screen-off)"),
@@ -492,6 +501,106 @@ fun SettingsScreen(
                             )
                         )
                     }
+
+                    // Cover Disguise Selector
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showDisguiseDialog = true }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(
+                                imageVector = when (currentDisguise) {
+                                    DisguiseMode.CALCULATOR -> Icons.Default.Calculate
+                                    DisguiseMode.NOTES -> Icons.Default.EditNote
+                                    else -> Icons.Default.SimCard
+                                },
+                                contentDescription = null,
+                                tint = VaultEmerald
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Cover Disguise Style", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                Text(
+                                    when (currentDisguise) {
+                                        DisguiseMode.CALCULATOR -> "Calculator • Math tool disguise"
+                                        DisguiseMode.NOTES -> "My Notes • Daily scratchpad & checklist"
+                                        else -> "SIM Service • Carrier utility disguise"
+                                    },
+                                    fontSize = 12.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = { showDisguiseDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = SurfaceBorder),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Switch", color = TextWhite, fontSize = 12.sp)
+                        }
+                    }
+
+                    // Flip-to-Lock Panic
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.ScreenRotation, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Flip-to-Lock Panic", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                Text("Instantly lock vault when phone is turned face down", fontSize = 12.sp, color = TextMuted)
+                            }
+                        }
+                        Switch(
+                            checked = flipToLockEnabled,
+                            onCheckedChange = {
+                                flipToLockEnabled = it
+                                securityManager.isFlipToLockEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkCarbon,
+                                checkedTrackColor = VaultEmerald
+                            )
+                        )
+                    }
+
+                    // Intruder Logs Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.navigateTo(Screen.IntruderLogs) }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.Shield, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Intruder Attempt Log", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                val intruderCount = securityManager.getIntruderLogs().size
+                                Text(
+                                    if (intruderCount > 0) "$intruderCount unauthorized attempt(s) recorded" else "Clean • No break-in attempts detected",
+                                    fontSize = 12.sp,
+                                    color = if (intruderCount > 0) DangerRed else TextMuted
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = { viewModel.navigateTo(Screen.IntruderLogs) },
+                            colors = ButtonDefaults.buttonColors(containerColor = SurfaceBorder),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("View", color = TextWhite, fontSize = 12.sp)
+                        }
+                    }
                 }
             }
         }
@@ -808,6 +917,123 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { showHelplineDialog = false }) {
                     Text("Cancel", color = TextMuted)
+                }
+            },
+            containerColor = SurfaceCard
+        )
+    }
+
+    // Cover Disguise Style Dialog
+    if (showDisguiseDialog) {
+        AlertDialog(
+            onDismissRequest = { showDisguiseDialog = false },
+            title = { Text("Select Cover Disguise", color = TextWhite, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Choose the decoy interface displayed whenever the app launches or locks.",
+                        color = TextMuted,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // SIM Service Option
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                currentDisguise = DisguiseMode.SIM_SERVICE
+                                securityManager.disguiseMode = DisguiseMode.SIM_SERVICE
+                                showDisguiseDialog = false
+                                Toast.makeText(context, "Cover disguise set to SIM Service", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = currentDisguise == DisguiseMode.SIM_SERVICE,
+                            onClick = {
+                                currentDisguise = DisguiseMode.SIM_SERVICE
+                                securityManager.disguiseMode = DisguiseMode.SIM_SERVICE
+                                showDisguiseDialog = false
+                                Toast.makeText(context, "Cover disguise set to SIM Service", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = RadioButtonDefaults.colors(selectedColor = VaultEmerald)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text("SIM Service (Default)", color = TextWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Carrier utility with Jazz & Zong rows", color = TextMuted, fontSize = 12.sp)
+                        }
+                    }
+
+                    // Calculator Option
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                currentDisguise = DisguiseMode.CALCULATOR
+                                securityManager.disguiseMode = DisguiseMode.CALCULATOR
+                                showDisguiseDialog = false
+                                Toast.makeText(context, "Cover disguise set to Calculator", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = currentDisguise == DisguiseMode.CALCULATOR,
+                            onClick = {
+                                currentDisguise = DisguiseMode.CALCULATOR
+                                securityManager.disguiseMode = DisguiseMode.CALCULATOR
+                                showDisguiseDialog = false
+                                Toast.makeText(context, "Cover disguise set to Calculator", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = RadioButtonDefaults.colors(selectedColor = VaultEmerald)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text("Calculator", color = TextWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Working calculator; enter PIN followed by '='", color = TextMuted, fontSize = 12.sp)
+                        }
+                    }
+
+                    // Notes Disguise Option
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                currentDisguise = DisguiseMode.NOTES
+                                securityManager.disguiseMode = DisguiseMode.NOTES
+                                showDisguiseDialog = false
+                                Toast.makeText(context, "Cover disguise set to My Notes", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = currentDisguise == DisguiseMode.NOTES,
+                            onClick = {
+                                currentDisguise = DisguiseMode.NOTES
+                                securityManager.disguiseMode = DisguiseMode.NOTES
+                                showDisguiseDialog = false
+                                Toast.makeText(context, "Cover disguise set to My Notes", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = RadioButtonDefaults.colors(selectedColor = VaultEmerald)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text("My Notes", color = TextWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Everyday note list; long-press title to unlock", color = TextMuted, fontSize = 12.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDisguiseDialog = false }) {
+                    Text("Done", color = VaultEmerald)
                 }
             },
             containerColor = SurfaceCard
