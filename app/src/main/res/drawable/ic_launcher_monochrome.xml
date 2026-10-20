@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+
+    <!-- SIM card silhouette for monochrome theme -->
+    <path
+        android:pathData="M375,307 L585,307 L665,387 L665,697 Q665,717 645,717 L375,717 Q355,717 355,697 L355,327 Q355,307 375,307 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="16"
+        android:strokeLineJoin="round" />
+
+    <!-- Chip outline -->
+    <path
+        android:pathData="M445,427 L579,427 A28,28 0 0,1 607,455 L607,569 A28,28 0 0,1 579,597 L445,597 A28,28 0 0,1 417,569 L417,455 A28,28 0 0,1 445,427 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="10" />
+
+    <!-- Chip lines -->
+    <path
+        android:pathData="M417,484 L472,484 M552,484 L607,484 M417,540 L472,540 M552,540 L607,540 M472,427 L472,484 M552,427 L552,484 M472,540 L472,597 M552,540 L552,597"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="8"
+        android:strokeLineCap="round" />
+
+    <!-- Central pad -->
+    <path
+        android:pathData="M484,484 L540,484 A12,12 0 0,1 552,496 L552,528 A12,12 0 0,1 540,540 L484,540 A12,12 0 0,1 472,528 L472,496 A12,12 0 0,1 484,484 Z"
+        android:fillColor="#FFFFFF" />
+</vector>

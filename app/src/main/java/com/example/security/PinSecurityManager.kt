@@ -2,6 +2,7 @@ package com.example.security
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.SystemClock
 import android.util.Base64
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
@@ -10,6 +11,11 @@ import java.security.spec.InvalidKeySpecException
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
+/**
+ * PinSecurityManager handles PIN setup, cryptographic hashing (PBKDF2-HMAC-SHA256),
+ * decoy PIN verification, lockout rate-limiting, and auto-lock timeouts using SystemClock.elapsedRealtime().
+ * Conforms to Master Build Spec v3 (Sections 9.1-9.4, Acceptance Criteria 15-17).
+ */
 class PinSecurityManager(context: Context) {
 
     private val prefs: SharedPreferences =
@@ -21,12 +27,12 @@ class PinSecurityManager(context: Context) {
         private const val KEY_DECOY_PIN_HASH = "key_decoy_pin_hash"
         private const val KEY_DECOY_PIN_SALT = "key_decoy_pin_salt"
         private const val KEY_FAILED_ATTEMPTS = "key_failed_attempts"
-        private const val KEY_LOCKOUT_UNTIL_MS = "key_lockout_until_ms"
+        private const val KEY_LOCKOUT_UNTIL_ELAPSED_MS = "key_lockout_until_elapsed_ms"
         private const val KEY_BIOMETRIC_ENABLED = "key_biometric_enabled"
         private const val KEY_FLAG_SECURE = "key_flag_secure"
         private const val KEY_GO_STRAIGHT_TO_VAULT = "key_go_straight_to_vault"
         private const val KEY_AUTO_LOCK_SECONDS = "key_auto_lock_seconds"
-        private const val KEY_LAST_BACKGROUND_MS = "key_last_background_ms"
+        private const val KEY_LAST_BACKGROUND_ELAPSED_MS = "key_last_background_elapsed_ms"
         private const val KEY_FIRST_TIME_SETUP_DONE = "key_first_time_setup_done"
         private const val KEY_HAPTIC_ENABLED = "key_haptic_enabled"
         private const val KEY_SHUFFLE_KEYPAD = "key_shuffle_keypad"
@@ -38,15 +44,15 @@ class PinSecurityManager(context: Context) {
         private const val KEY_LENGTH = 256
         private const val SALT_LENGTH = 16
 
-        // Auto-lock timing constants
+        // Auto-lock timing constants (Master Spec v3 Section 9.4 & Acceptance Criterion 15)
         const val AUTO_LOCK_IMMEDIATE = 0
-        const val AUTO_LOCK_1_MIN = 60
+        const val AUTO_LOCK_1_MIN = 60      // DEFAULT: 1 minute
         const val AUTO_LOCK_2_MIN = 120
         const val AUTO_LOCK_5_MIN = 300
         const val AUTO_LOCK_30_MIN = 1800
         const val AUTO_LOCK_ON_APP_CLOSE = -1
 
-        // Verified Pakistani Telecom Customer Care Helplines
+        // Verified Pakistani Telecom Customer Care Helplines (Section 10.2)
         const val DEFAULT_JAZZ_HELPLINE = "111"
         const val DEFAULT_ZONG_HELPLINE = "310"
     }
@@ -69,13 +75,15 @@ class PinSecurityManager(context: Context) {
         get() = prefs.getBoolean(KEY_GO_STRAIGHT_TO_VAULT, false)
         set(value) = prefs.edit().putBoolean(KEY_GO_STRAIGHT_TO_VAULT, value).apply()
 
+    // Default auto-lock is 1 minute (Section 9.4 & Acceptance Criterion 21)
     var autoLockSeconds: Int
         get() = prefs.getInt(KEY_AUTO_LOCK_SECONDS, AUTO_LOCK_1_MIN)
         set(value) = prefs.edit().putInt(KEY_AUTO_LOCK_SECONDS, value).apply()
 
-    var lastBackgroundTimestamp: Long
-        get() = prefs.getLong(KEY_LAST_BACKGROUND_MS, 0L)
-        set(value) = prefs.edit().putLong(KEY_LAST_BACKGROUND_MS, value).apply()
+    // Track background timing via SystemClock.elapsedRealtime() (Criterion 17)
+    var lastBackgroundElapsedRealtime: Long
+        get() = prefs.getLong(KEY_LAST_BACKGROUND_ELAPSED_MS, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_BACKGROUND_ELAPSED_MS, value).apply()
 
     var isFirstTimeSetupDone: Boolean
         get() = prefs.getBoolean(KEY_FIRST_TIME_SETUP_DONE, false)
@@ -103,6 +111,19 @@ class PinSecurityManager(context: Context) {
 
     var isDecoySessionActive: Boolean = false
 
+    // Sensitive action re-auth timestamp (valid for 2 minutes per Section 9.4)
+    private var lastSensitiveActionAuthTime: Long = 0L
+
+    fun recordSensitiveActionAuth() {
+        lastSensitiveActionAuthTime = SystemClock.elapsedRealtime()
+    }
+
+    fun isSensitiveActionAuthValid(): Boolean {
+        if (lastSensitiveActionAuthTime == 0L) return false
+        val diff = SystemClock.elapsedRealtime() - lastSensitiveActionAuthTime
+        return diff < 120_000L // 2 minutes
+    }
+
     fun setPin(pin: String): Boolean {
         if (pin.length < 4) return false
         val salt = ByteArray(SALT_LENGTH)
@@ -113,7 +134,7 @@ class PinSecurityManager(context: Context) {
             .putString(KEY_PIN_HASH, Base64.encodeToString(hash, Base64.NO_WRAP))
             .putString(KEY_PIN_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
             .putInt(KEY_FAILED_ATTEMPTS, 0)
-            .putLong(KEY_LOCKOUT_UNTIL_MS, 0L)
+            .putLong(KEY_LOCKOUT_UNTIL_ELAPSED_MS, 0L)
             .apply()
         return true
     }
@@ -161,6 +182,7 @@ class PinSecurityManager(context: Context) {
             if (computedDecoyHash != null && MessageDigest.isEqual(Base64.decode(storedDecoyHash, Base64.NO_WRAP), computedDecoyHash)) {
                 isDecoySessionActive = true
                 prefs.edit().putInt(KEY_FAILED_ATTEMPTS, 0).apply()
+                recordSensitiveActionAuth()
                 return VerificationResult.DecoySuccess
             }
         }
@@ -184,15 +206,16 @@ class PinSecurityManager(context: Context) {
             isDecoySessionActive = false
             prefs.edit()
                 .putInt(KEY_FAILED_ATTEMPTS, 0)
-                .putLong(KEY_LOCKOUT_UNTIL_MS, 0L)
+                .putLong(KEY_LOCKOUT_UNTIL_ELAPSED_MS, 0L)
                 .apply()
+            recordSensitiveActionAuth()
             return VerificationResult.Success
         } else {
             val failedAttempts = prefs.getInt(KEY_FAILED_ATTEMPTS, 0) + 1
             val editor = prefs.edit().putInt(KEY_FAILED_ATTEMPTS, failedAttempts)
 
             // Rate limiting per Spec 9.3:
-            // 5 wrong: 30s, 6 wrong: 60s, 7 wrong: 300s, 8+: 900s (15 min cap)
+            // 5 wrong attempts: 30s, 6 wrong: 60s, 7 wrong: 300s, 8+ wrong: 900s (15 min cap)
             val lockoutSeconds = when {
                 failedAttempts >= 8 -> 900
                 failedAttempts == 7 -> 300
@@ -202,8 +225,8 @@ class PinSecurityManager(context: Context) {
             }
 
             if (lockoutSeconds > 0) {
-                val lockoutUntil = System.currentTimeMillis() + (lockoutSeconds * 1000L)
-                editor.putLong(KEY_LOCKOUT_UNTIL_MS, lockoutUntil)
+                val lockoutUntil = SystemClock.elapsedRealtime() + (lockoutSeconds * 1000L)
+                editor.putLong(KEY_LOCKOUT_UNTIL_ELAPSED_MS, lockoutUntil)
                 editor.apply()
                 return VerificationResult.LockedOut(lockoutSeconds * 1000L)
             } else {
@@ -214,8 +237,8 @@ class PinSecurityManager(context: Context) {
     }
 
     fun getLockoutRemainingMs(): Long {
-        val lockoutUntil = prefs.getLong(KEY_LOCKOUT_UNTIL_MS, 0L)
-        val diff = lockoutUntil - System.currentTimeMillis()
+        val lockoutUntil = prefs.getLong(KEY_LOCKOUT_UNTIL_ELAPSED_MS, 0L)
+        val diff = lockoutUntil - SystemClock.elapsedRealtime()
         return if (diff > 0) diff else 0L
     }
 
@@ -226,8 +249,9 @@ class PinSecurityManager(context: Context) {
             .remove(KEY_DECOY_PIN_HASH)
             .remove(KEY_DECOY_PIN_SALT)
             .remove(KEY_FAILED_ATTEMPTS)
-            .remove(KEY_LOCKOUT_UNTIL_MS)
+            .remove(KEY_LOCKOUT_UNTIL_ELAPSED_MS)
             .remove(KEY_FIRST_TIME_SETUP_DONE)
+            .putInt(KEY_AUTO_LOCK_SECONDS, AUTO_LOCK_1_MIN) // Reset to 1 minute default
             .apply()
     }
 

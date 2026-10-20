@@ -1,3 +1,39 @@
 <resources>
-    <string name="app_name">SIM Services</string>
+    <!-- App & Disguise Titles -->
+    <string name="app_name">SIM Service</string>
+    <string name="sim_service_title">SIM Service</string>
+    <string name="vault_title">Private Vault</string>
+
+    <!-- Cover Screen Carriers & Accessibility Labels -->
+    <string name="sim_1_jazz">Jazz</string>
+    <string name="sim_2_zong">Zong</string>
+    <string name="sim_1_talkback">Jazz, SIM 1, button</string>
+    <string name="sim_2_talkback">Zong, SIM 2, button</string>
+    <string name="back_action">Back</string>
+
+    <!-- Post-Auth Actions -->
+    <string name="identity_confirmed">Identity Confirmed</string>
+    <string name="call_helpline">Call Helpline (%1$s)</string>
+    <string name="open_sim_toolkit">Open SIM Toolkit</string>
+    <string name="open_vault">Open Vault</string>
+    <string name="stk_unavailable_title">SIM Toolkit Not Available</string>
+    <string name="stk_unavailable_desc">SIM Toolkit isn\'t available on this device.</string>
+
+    <!-- Security & Auto-Lock -->
+    <string name="security_verification">Security Verification</string>
+    <string name="enter_pin">Enter 4-6 digit master PIN</string>
+    <string name="auth_confirm_title">Confirm it\'s you</string>
+    <string name="auth_confirm_subtitle">Required to continue</string>
+
+    <string name="auto_lock_immediate">Immediately</string>
+    <string name="auto_lock_1_min">After 1 minute</string>
+    <string name="auto_lock_2_min">After 2 minutes</string>
+    <string name="auto_lock_5_min">After 5 minutes</string>
+    <string name="auto_lock_30_min">After 30 minutes</string>
+    <string name="auto_lock_until_closed">Until the app is closed</string>
+
+    <!-- General -->
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="close">Close</string>
 </resources>

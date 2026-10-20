@@ -1,8 +1,83 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:width="66dp"
-        android:height="66dp"
-        android:drawable="@drawable/ic_sim_chip"
-        android:gravity="center" />
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+
+    <!-- Matte black SIM Card with Angled Top-Right Notch -->
+    <path
+        android:pathData="M375,307 L585,307 L665,387 L665,697 Q665,717 645,717 L375,717 Q355,717 355,697 L355,327 Q355,307 375,307 Z"
+        android:strokeWidth="14"
+        android:strokeLineJoin="round">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="204.8"
+                android:startY="0"
+                android:endX="819.2"
+                android:endY="1024"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF232427" />
+                <item android:offset="1.0" android:color="#FF0B0B0D" />
+            </gradient>
+        </aapt:attr>
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="204.8"
+                android:startY="0"
+                android:endX="819.2"
+                android:endY="1024"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF232427" />
+                <item android:offset="1.0" android:color="#FF0B0B0D" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Faint inner outline for depth -->
+    <path
+        android:pathData="M375,314 L582,314 L658,390 L658,697 Q658,710 645,710 L375,710 Q362,710 362,697 L362,327 Q362,314 375,314 Z"
+        android:strokeColor="#993A3C41"
+        android:strokeWidth="2.5" />
+
+    <!-- Gold & Orange Chip Contact Pad -->
+    <path
+        android:pathData="M445,427 L579,427 A28,28 0 0,1 607,455 L607,569 A28,28 0 0,1 579,597 L445,597 A28,28 0 0,1 417,569 L417,455 A28,28 0 0,1 445,427 Z"
+        android:strokeColor="#B3A3540F"
+        android:strokeWidth="3">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="1024"
+                android:endY="1024"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FFFFE08A" />
+                <item android:offset="0.35" android:color="#FFF7B84A" />
+                <item android:offset="0.7" android:color="#FFEE8E2A" />
+                <item android:offset="1.0" android:color="#FFC96A16" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Chip Sub-divided Segment Lines -->
+    <path
+        android:pathData="M417,484 L472,484 M552,484 L607,484 M417,540 L472,540 M552,540 L607,540 M472,427 L472,484 M552,427 L552,484 M472,540 L472,597 M552,540 L552,597"
+        android:strokeColor="#998A4710"
+        android:strokeWidth="5"
+        android:strokeLineCap="round" />
+
+    <!-- Inner central pad rounded rectangle -->
+    <path
+        android:pathData="M484,484 L540,484 A12,12 0 0,1 552,496 L552,528 A12,12 0 0,1 540,540 L484,540 A12,12 0 0,1 472,528 L472,496 A12,12 0 0,1 484,484 Z"
+        android:strokeColor="#998A4710"
+        android:strokeWidth="5" />
+
+    <!-- Top metallic sheen highlight -->
+    <path
+        android:pathData="M440,439 L584,439"
+        android:strokeColor="#80FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+</vector>

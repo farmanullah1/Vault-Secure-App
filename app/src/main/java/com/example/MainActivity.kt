@@ -1,6 +1,7 @@
 package com.example
 
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -12,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import com.example.security.PinSecurityManager
 import com.example.ui.screens.AudioPlayerScreen
@@ -31,6 +33,12 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Edge-to-edge system bar contrast
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
 
         // Apply FLAG_SECURE if enabled (Spec 9.5: prevents screenshots & recents leaks)
         applySecurityFlags()
@@ -74,13 +82,13 @@ class MainActivity : FragmentActivity() {
             val autoLockSetting = viewModel.securityManager.autoLockSeconds
             when {
                 autoLockSetting == PinSecurityManager.AUTO_LOCK_ON_APP_CLOSE -> {
-                    // Stays unlocked while app process remains active;
-                    // re-requires password whenever app is closed and reopened.
+                    // Stays unlocked while app remains running in memory;
+                    // re-requires authentication whenever app is closed and reopened.
                 }
                 autoLockSetting > 0 -> {
-                    val lastBg = viewModel.securityManager.lastBackgroundTimestamp
+                    val lastBg = viewModel.securityManager.lastBackgroundElapsedRealtime
                     if (lastBg > 0L) {
-                        val elapsed = System.currentTimeMillis() - lastBg
+                        val elapsed = SystemClock.elapsedRealtime() - lastBg
                         if (elapsed >= autoLockSetting * 1000L) {
                             viewModel.lockVault()
                         }
@@ -96,8 +104,8 @@ class MainActivity : FragmentActivity() {
             val autoLockSetting = viewModel.securityManager.autoLockSeconds
             if (autoLockSetting == PinSecurityManager.AUTO_LOCK_IMMEDIATE) {
                 viewModel.lockVault()
-            } else {
-                viewModel.securityManager.lastBackgroundTimestamp = System.currentTimeMillis()
+            } else if (autoLockSetting > 0) {
+                viewModel.securityManager.lastBackgroundElapsedRealtime = SystemClock.elapsedRealtime()
             }
         }
     }

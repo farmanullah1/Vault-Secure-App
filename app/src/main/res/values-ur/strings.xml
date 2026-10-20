@@ -1,0 +1,27 @@
+<resources>
+    <string name="app_name">سم سروس</string>
+    <string name="sim_service_title">سم سروس</string>
+    <string name="vault_title">پرائیویٹ والٹ</string>
+
+    <string name="sim_1_jazz">جاز</string>
+    <string name="sim_2_zong">زونگ</string>
+    <string name="sim_1_talkback">جاز، سم 1، بٹن</string>
+    <string name="sim_2_talkback">زونگ، سم 2، بٹن</string>
+    <string name="back_action">پیچھے</string>
+
+    <string name="identity_confirmed">شناخت کی تصدیق ہو گئی</string>
+    <string name="call_helpline">ہیلپ لائن کال کریں (%1$s)</string>
+    <string name="open_sim_toolkit">سم ٹول کٹ کھولیں</string>
+    <string name="open_vault">والٹ کھولیں</string>
+    <string name="stk_unavailable_title">سم ٹول کٹ دستیاب نہیں ہے</string>
+    <string name="stk_unavailable_desc">اس ڈیوائس پر سم ٹول کٹ دستیاب نہیں ہے۔</string>
+
+    <string name="security_verification">سیکیورٹی تصدیق</string>
+    <string name="enter_pin">4 سے 6 ہندسوں کا ماسٹر پن درج کریں</string>
+    <string name="auth_confirm_title">تصدیق کریں کہ یہ آپ ہیں</string>
+    <string name="auth_confirm_subtitle">جاری رکھنے کے لیے تصدیق درکار ہے</string>
+
+    <string name="ok">ٹھیک ہے</string>
+    <string name="cancel">منسوخ کریں</string>
+    <string name="close">بند کریں</string>
+</resources>

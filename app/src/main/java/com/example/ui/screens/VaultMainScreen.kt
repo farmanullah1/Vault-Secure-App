@@ -183,7 +183,7 @@ fun VaultMainScreen(
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = "Private Safe",
+                                text = androidx.compose.ui.res.stringResource(com.example.R.string.vault_title),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 20.sp,
                                 color = TextWhite
