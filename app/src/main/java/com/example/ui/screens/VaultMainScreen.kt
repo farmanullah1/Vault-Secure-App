@@ -39,6 +39,8 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
@@ -46,12 +48,14 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
@@ -110,6 +114,7 @@ import com.example.ui.theme.TextDim
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextWhite
 import com.example.ui.theme.VaultEmerald
+import com.example.ui.util.formatFileSize
 import com.example.viewmodel.Screen
 import com.example.viewmodel.SortOption
 import com.example.viewmodel.VaultTab
@@ -133,11 +138,18 @@ fun VaultMainScreen(
     val showFavoritesOnly by viewModel.showFavoritesOnly.collectAsState()
     val activeAudioItem by viewModel.activeAudioItem.collectAsState()
     val isAudioPlaying by viewModel.isAudioPlaying.collectAsState()
+    val gridColumns by viewModel.gridColumns.collectAsState()
+    val trashCount by viewModel.trashCount.collectAsState()
 
     var showSearch by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showImportChoiceDialog by remember { mutableStateOf(false) }
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
+    var showEmptyTrashConfirm by remember { mutableStateOf(false) }
+    var showPurgeConfirm by remember { mutableStateOf(false) }
+    var itemToPurge by remember { mutableStateOf<VaultMediaItem?>(null) }
+    var showSecureShredOption by remember { mutableStateOf(false) }
+    var showPurgeBatchConfirm by remember { mutableStateOf(false) }
     var isMoveSelected by remember { mutableStateOf(false) }
     var showFirstTimeSetup by remember { mutableStateOf(!viewModel.securityManager.isFirstTimeSetupDone) }
 
@@ -175,7 +187,14 @@ fun VaultMainScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    if (isSelectionMode) {
+                    if (selectedTab == VaultTab.TRASH) {
+                        Text(
+                            text = if (isSelectionMode) "${selectedItemIds.size} Selected" else "Recycle Bin",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = DangerRed
+                        )
+                    } else if (isSelectionMode) {
                         Text(
                             text = "${selectedItemIds.size} Selected",
                             fontWeight = FontWeight.Bold,
@@ -216,7 +235,29 @@ fun VaultMainScreen(
                     }
                 },
                 actions = {
-                    if (isSelectionMode) {
+                    if (selectedTab == VaultTab.TRASH) {
+                        if (isSelectionMode) {
+                            IconButton(onClick = { viewModel.selectAll() }) {
+                                Icon(imageVector = Icons.Default.SelectAll, contentDescription = "Select All", tint = TextWhite)
+                            }
+                            IconButton(onClick = { viewModel.restoreSelectedFromTrash() }) {
+                                Icon(imageVector = Icons.Default.Restore, contentDescription = "Restore Selected", tint = VaultEmerald)
+                            }
+                            IconButton(onClick = { showPurgeBatchConfirm = true }) {
+                                Icon(imageVector = Icons.Default.DeleteForever, contentDescription = "Delete Forever", tint = DangerRed)
+                            }
+                            IconButton(onClick = { viewModel.clearSelection() }) {
+                                Icon(imageVector = Icons.Default.Close, contentDescription = "Close Selection", tint = TextWhite)
+                            }
+                        } else {
+                            IconButton(onClick = { showEmptyTrashConfirm = true }) {
+                                Icon(imageVector = Icons.Default.DeleteForever, contentDescription = "Empty Trash", tint = DangerRed)
+                            }
+                            IconButton(onClick = { viewModel.selectTab(VaultTab.PHOTOS) }) {
+                                Icon(imageVector = Icons.Default.Close, contentDescription = "Exit Trash", tint = TextWhite)
+                            }
+                        }
+                    } else if (isSelectionMode) {
                         IconButton(onClick = { viewModel.selectAll() }) {
                             Icon(imageVector = Icons.Default.SelectAll, contentDescription = "Select All", tint = TextWhite)
                         }
@@ -233,6 +274,29 @@ fun VaultMainScreen(
                             Icon(imageVector = Icons.Default.Close, contentDescription = "Close Selection", tint = TextWhite)
                         }
                     } else {
+                        // Grid column switcher (2 <-> 3 <-> 4)
+                        IconButton(onClick = {
+                            val nextCols = if (gridColumns == 2) 3 else if (gridColumns == 3) 4 else 2
+                            viewModel.setGridColumns(nextCols)
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.GridView,
+                                contentDescription = "Grid Layout ($gridColumns cols)",
+                                tint = TextWhite
+                            )
+                        }
+
+                        // Recycle Bin (Trash) navigation icon
+                        IconButton(onClick = { viewModel.selectTab(VaultTab.TRASH) }) {
+                            BadgedBox(badge = { if (trashCount > 0) Badge { Text("$trashCount") } }) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteSweep,
+                                    contentDescription = "Recycle Bin",
+                                    tint = TextWhite
+                                )
+                            }
+                        }
+
                         // Favorite filter toggle
                         IconButton(onClick = { viewModel.toggleFavoritesOnly() }) {
                             Icon(
@@ -524,7 +588,7 @@ fun VaultMainScreen(
                             )
                         } else {
                             LazyVerticalGrid(
-                                columns = GridCells.Fixed(3),
+                                columns = GridCells.Fixed(gridColumns),
                                 contentPadding = PaddingValues(8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -570,7 +634,7 @@ fun VaultMainScreen(
                             )
                         } else {
                             LazyVerticalGrid(
-                                columns = GridCells.Fixed(3),
+                                columns = GridCells.Fixed(gridColumns),
                                 contentPadding = PaddingValues(8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -607,7 +671,7 @@ fun VaultMainScreen(
                             )
                         } else {
                             LazyVerticalGrid(
-                                columns = GridCells.Fixed(2),
+                                columns = GridCells.Fixed(if (gridColumns == 2) 1 else if (gridColumns == 3) 2 else 3),
                                 contentPadding = PaddingValues(8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -732,6 +796,21 @@ fun VaultMainScreen(
                         }
                     }
 
+                    VaultTab.TRASH -> {
+                        TrashScreenContent(
+                            trashList = filteredMedia,
+                            selectedItemIds = selectedItemIds,
+                            isSelectionMode = isSelectionMode,
+                            onToggleSelection = { viewModel.toggleItemSelection(it) },
+                            onRestoreItem = { viewModel.restoreItemFromTrash(it) },
+                            onDeleteItem = {
+                                itemToPurge = it
+                                showPurgeConfirm = true
+                            },
+                            onEmptyTrashClick = { showEmptyTrashConfirm = true }
+                        )
+                    }
+
                     VaultTab.SETTINGS -> {
                         SettingsScreen(viewModel = viewModel)
                     }
@@ -802,8 +881,8 @@ fun VaultMainScreen(
     if (showBatchDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showBatchDeleteConfirm = false },
-            title = { Text("Delete ${selectedItemIds.size} Items?", color = TextWhite) },
-            text = { Text("This will permanently remove the selected items from the safe.", color = TextMuted) },
+            title = { Text("Move ${selectedItemIds.size} Items to Trash?", color = TextWhite) },
+            text = { Text("Selected items will be moved to the Recycle Bin and can be restored within 30 days.", color = TextMuted) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -811,11 +890,154 @@ fun VaultMainScreen(
                         viewModel.deleteSelectedItems()
                     }
                 ) {
-                    Text("Delete All Selected", color = DangerRed, fontWeight = FontWeight.Bold)
+                    Text("Move to Trash", color = DangerRed, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showBatchDeleteConfirm = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            },
+            containerColor = SurfaceCard
+        )
+    }
+
+    // Empty Trash Confirmation Dialog
+    if (showEmptyTrashConfirm) {
+        AlertDialog(
+            onDismissRequest = { showEmptyTrashConfirm = false },
+            title = { Text("Empty Recycle Bin?", color = TextWhite, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("All files in the Recycle Bin will be permanently removed. This action cannot be undone.", color = TextMuted, fontSize = 13.sp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showSecureShredOption = !showSecureShredOption }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.Checkbox(
+                            checked = showSecureShredOption,
+                            onCheckedChange = { showSecureShredOption = it },
+                            colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = DangerRed)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            Text("Secure Shred", color = TextWhite, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Overwrite file contents with random bytes before deletion", color = TextMuted, fontSize = 11.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showEmptyTrashConfirm = false
+                        viewModel.emptyTrash(showSecureShredOption)
+                    }
+                ) {
+                    Text("Permanently Delete All", color = DangerRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEmptyTrashConfirm = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            },
+            containerColor = SurfaceCard
+        )
+    }
+
+    // Single Item Purge Confirmation
+    if (showPurgeConfirm && itemToPurge != null) {
+        val target = itemToPurge!!
+        AlertDialog(
+            onDismissRequest = {
+                showPurgeConfirm = false
+                itemToPurge = null
+            },
+            title = { Text("Permanently Delete?", color = TextWhite, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Permanently delete \"${target.fileName}\"? This cannot be recovered.", color = TextMuted, fontSize = 13.sp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showSecureShredOption = !showSecureShredOption }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.Checkbox(
+                            checked = showSecureShredOption,
+                            onCheckedChange = { showSecureShredOption = it },
+                            colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = DangerRed)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Secure Shred (Zero-fill overwrite)", color = TextWhite, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPurgeConfirm = false
+                        viewModel.permanentDeleteItem(target, showSecureShredOption)
+                        itemToPurge = null
+                    }
+                ) {
+                    Text("Delete Forever", color = DangerRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showPurgeConfirm = false
+                    itemToPurge = null
+                }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            },
+            containerColor = SurfaceCard
+        )
+    }
+
+    // Batch Purge Confirmation in Trash
+    if (showPurgeBatchConfirm) {
+        AlertDialog(
+            onDismissRequest = { showPurgeBatchConfirm = false },
+            title = { Text("Delete ${selectedItemIds.size} Items Forever?", color = TextWhite, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("These files will be permanently deleted and cannot be recovered.", color = TextMuted, fontSize = 13.sp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showSecureShredOption = !showSecureShredOption }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.Checkbox(
+                            checked = showSecureShredOption,
+                            onCheckedChange = { showSecureShredOption = it },
+                            colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = DangerRed)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Secure Shred (Zero-fill overwrite)", color = TextWhite, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPurgeBatchConfirm = false
+                        viewModel.permanentlyDeleteSelected(showSecureShredOption)
+                    }
+                ) {
+                    Text("Delete Forever", color = DangerRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPurgeBatchConfirm = false }) {
                     Text("Cancel", color = TextMuted)
                 }
             },
@@ -1563,6 +1785,285 @@ fun AlbumGridCard(
                 fontSize = 12.sp,
                 color = TextMuted
             )
+        }
+    }
+}
+
+@Composable
+fun TrashScreenContent(
+    trashList: List<VaultMediaItem>,
+    selectedItemIds: Set<Long>,
+    isSelectionMode: Boolean,
+    onToggleSelection: (Long) -> Unit,
+    onRestoreItem: (VaultMediaItem) -> Unit,
+    onDeleteItem: (VaultMediaItem) -> Unit,
+    onEmptyTrashClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (trashList.isEmpty()) {
+        EmptyVaultState(
+            title = "Recycle Bin is Empty",
+            subtitle = "Items moved to the Recycle Bin will be stored here for up to 30 days before being automatically purged.",
+            icon = Icons.Default.DeleteSweep
+        )
+    } else {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Surface(
+                color = SurfaceCard,
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteSweep,
+                                contentDescription = null,
+                                tint = DangerRed,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "${trashList.size} item(s) in Recycle Bin",
+                                color = TextWhite,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Auto-purged after 30 days of deletion",
+                            color = TextMuted,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    if (!isSelectionMode) {
+                        TextButton(
+                            onClick = onEmptyTrashClick,
+                            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                                contentColor = DangerRed
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteForever,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Empty Bin", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(trashList, key = { it.id }) { item ->
+                    val isSelected = selectedItemIds.contains(item.id)
+                    TrashListItem(
+                        item = item,
+                        isSelected = isSelected,
+                        isSelectionMode = isSelectionMode,
+                        onClick = {
+                            if (isSelectionMode) {
+                                onToggleSelection(item.id)
+                            }
+                        },
+                        onLongClick = {
+                            onToggleSelection(item.id)
+                        },
+                        onRestore = { onRestoreItem(item) },
+                        onDeleteForever = { onDeleteItem(item) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun TrashListItem(
+    item: VaultMediaItem,
+    isSelected: Boolean,
+    isSelectionMode: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onRestore: () -> Unit,
+    onDeleteForever: () -> Unit
+) {
+    val context = LocalContext.current
+    val elapsedDays = if (item.trashTimestamp > 0L) {
+        (System.currentTimeMillis() - item.trashTimestamp) / (1000L * 60 * 60 * 24)
+    } else {
+        0L
+    }
+    val daysRemaining = maxOf(0L, 30L - elapsedDays)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .border(
+                width = if (isSelected) 2.dp else 0.dp,
+                color = if (isSelected) VaultEmerald else Color.Transparent,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .testTag("trash_item_${item.id}"),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isSelectionMode) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(if (isSelected) VaultEmerald else DarkCarbon.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = DarkCarbon, modifier = Modifier.size(16.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(DarkCarbon),
+                contentAlignment = Alignment.Center
+            ) {
+                when (item.mediaType) {
+                    MediaType.PHOTO.name, MediaType.VIDEO.name -> {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(Uri.parse(item.uriString))
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = item.fileName,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        if (item.mediaType == MediaType.VIDEO.name) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.35f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Movie,
+                                    contentDescription = null,
+                                    tint = TextWhite,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                    MediaType.AUDIO.name -> {
+                        Icon(
+                            imageVector = Icons.Default.Audiotrack,
+                            contentDescription = null,
+                            tint = VaultEmerald,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    else -> {
+                        Icon(
+                            imageVector = Icons.Default.Description,
+                            contentDescription = null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.fileName,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextWhite,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = formatFileSize(item.fileSizeBytes),
+                        fontSize = 11.sp,
+                        color = TextMuted
+                    )
+                    Text(
+                        text = " • ",
+                        fontSize = 11.sp,
+                        color = TextMuted
+                    )
+                    Text(
+                        text = if (daysRemaining <= 1) "Expires today" else "Expires in $daysRemaining d",
+                        fontSize = 11.sp,
+                        color = if (daysRemaining <= 3) DangerRed else TextMuted,
+                        fontWeight = if (daysRemaining <= 3) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+            }
+
+            if (!isSelectionMode) {
+                IconButton(
+                    onClick = onRestore,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Restore,
+                        contentDescription = "Restore Item",
+                        tint = VaultEmerald,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onDeleteForever,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteForever,
+                        contentDescription = "Permanently Delete",
+                        tint = DangerRed,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
         }
     }
 }

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.io.OutputStream
+import java.security.SecureRandom
 
 data class ImportProgress(
     val current: Int,
@@ -32,6 +33,8 @@ class VaultRepository(
 ) {
 
     val allMedia: Flow<List<VaultMediaItem>> = mediaDao.getAllMedia()
+    val trashMedia: Flow<List<VaultMediaItem>> = mediaDao.getTrashMedia()
+    val trashCount: Flow<Int> = mediaDao.countTrash()
 
     fun getMediaByType(type: String): Flow<List<VaultMediaItem>> {
         return mediaDao.getMediaByType(type)
@@ -45,37 +48,117 @@ class VaultRepository(
         mediaDao.updateFavorite(item.id, !item.isFavorite)
     }
 
-    suspend fun deleteMedia(item: VaultMediaItem): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val uri = Uri.parse(item.uriString)
-            DocumentsContract.deleteDocument(context.contentResolver, uri)
-        } catch (e: Exception) {
-            try {
-                DocumentFile.fromSingleUri(context, Uri.parse(item.uriString))?.delete()
-            } catch (e2: Exception) {
-                // Ignore
-            }
+    suspend fun updateLastPlayedPosition(id: Long, positionMs: Long) = withContext(Dispatchers.IO) {
+        mediaDao.updateLastPlayedPosition(id, positionMs)
+    }
+
+    // Move to Recycle Bin (Trash)
+    suspend fun moveToTrash(item: VaultMediaItem) = withContext(Dispatchers.IO) {
+        mediaDao.moveToTrash(item.id, System.currentTimeMillis())
+    }
+
+    suspend fun moveToTrashBatch(items: List<VaultMediaItem>) = withContext(Dispatchers.IO) {
+        val ids = items.map { it.id }
+        mediaDao.moveToTrashBatch(ids, System.currentTimeMillis())
+    }
+
+    // Restore from Trash
+    suspend fun restoreFromTrash(item: VaultMediaItem) = withContext(Dispatchers.IO) {
+        mediaDao.restoreFromTrash(item.id)
+    }
+
+    suspend fun restoreFromTrashBatch(items: List<VaultMediaItem>) = withContext(Dispatchers.IO) {
+        val ids = items.map { it.id }
+        mediaDao.restoreFromTrashBatch(ids)
+    }
+
+    // Permanent Deletion with optional Secure Shredder (Zero-fill overwrite)
+    suspend fun permanentDelete(item: VaultMediaItem, secureShred: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+        if (secureShred) {
+            shredDocument(item)
         }
+        deleteDocumentFromStorage(item.uriString)
         mediaDao.delete(item)
         true
     }
 
-    suspend fun deleteBatch(items: List<VaultMediaItem>): Int = withContext(Dispatchers.IO) {
+    suspend fun permanentDeleteBatch(items: List<VaultMediaItem>, secureShred: Boolean = false): Int = withContext(Dispatchers.IO) {
         var count = 0
         for (item in items) {
-            try {
-                DocumentsContract.deleteDocument(context.contentResolver, Uri.parse(item.uriString))
-            } catch (e: Exception) {
-                try {
-                    DocumentFile.fromSingleUri(context, Uri.parse(item.uriString))?.delete()
-                } catch (e2: Exception) {
-                    // Ignore
-                }
+            if (secureShred) {
+                shredDocument(item)
             }
+            deleteDocumentFromStorage(item.uriString)
             mediaDao.delete(item)
             count++
         }
         count
+    }
+
+    suspend fun emptyTrash(secureShred: Boolean = false): Int = withContext(Dispatchers.IO) {
+        val trashItems = mediaDao.getTrashMediaList()
+        var count = 0
+        for (item in trashItems) {
+            if (secureShred) {
+                shredDocument(item)
+            }
+            deleteDocumentFromStorage(item.uriString)
+            count++
+        }
+        mediaDao.emptyTrash()
+        count
+    }
+
+    private fun deleteDocumentFromStorage(uriString: String) {
+        try {
+            val uri = Uri.parse(uriString)
+            DocumentsContract.deleteDocument(context.contentResolver, uri)
+        } catch (e: Exception) {
+            try {
+                DocumentFile.fromSingleUri(context, Uri.parse(uriString))?.delete()
+            } catch (e2: Exception) {
+                // Ignore
+            }
+        }
+    }
+
+    private fun shredDocument(item: VaultMediaItem) {
+        try {
+            val uri = Uri.parse(item.uriString)
+            val size = item.fileSizeBytes
+            if (size > 0 && !uri.scheme.equals("note", ignoreCase = true)) {
+                context.contentResolver.openOutputStream(uri, "rwt")?.use { out ->
+                    val buffer = ByteArray(8192)
+                    SecureRandom().nextBytes(buffer)
+                    var written = 0L
+                    while (written < size) {
+                        val toWrite = minOf(buffer.size.toLong(), size - written).toInt()
+                        out.write(buffer, 0, toWrite)
+                        written += toWrite
+                    }
+                    out.flush()
+                }
+            }
+        } catch (e: Exception) {
+            // Best effort overwrite
+        }
+    }
+
+    // Auto-purge trash older than 30 days
+    suspend fun purgeOldTrash() = withContext(Dispatchers.IO) {
+        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000L)
+        mediaDao.purgeTrashOlderThan(thirtyDaysAgo)
+    }
+
+    // Backward-compatible deleteMedia moves to trash
+    suspend fun deleteMedia(item: VaultMediaItem): Boolean = withContext(Dispatchers.IO) {
+        moveToTrash(item)
+        true
+    }
+
+    suspend fun deleteBatch(items: List<VaultMediaItem>): Int = withContext(Dispatchers.IO) {
+        moveToTrashBatch(items)
+        items.size
     }
 
     fun getVaultFolderUri(): Uri? {
@@ -146,7 +229,6 @@ class VaultRepository(
             val sourceSize = nameAndSize.second
             val mimeType = context.contentResolver.getType(sourceUri) ?: getMimeTypeFromExtension(fileName)
 
-            // Extract original directory or path representation
             val pathSegments = sourceUri.pathSegments
             val directoryGuess = if (pathSegments.size > 1) {
                 pathSegments[pathSegments.size - 2]

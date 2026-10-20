@@ -168,15 +168,31 @@ fun AppNavigation(viewModel: VaultViewModel) {
         }
 
         is Screen.PhotoViewer -> {
+            val photos = allMedia.filter { it.mediaType == com.example.data.model.MediaType.PHOTO.name }
+            val listToUse = if (photos.any { it.id == screen.mediaId }) photos else allMedia
+            PhotoViewerScreen(
+                mediaList = listToUse,
+                initialMediaId = screen.mediaId,
+                onBack = { viewModel.navigateTo(Screen.VaultMain) },
+                onDelete = { viewModel.deleteItem(it) },
+                onToggleFavorite = { viewModel.toggleFavorite(it) },
+                onRestore = { mediaItem, treeUri ->
+                    viewModel.restoreMedia(mediaItem, treeUri, deleteFromVault = false)
+                }
+            )
+        }
+
+        is Screen.VideoPlayer -> {
+            val videos = allMedia.filter { it.mediaType == com.example.data.model.MediaType.VIDEO.name }
+            val listToUse = if (videos.any { it.id == screen.mediaId }) videos else allMedia
             val item = allMedia.find { it.id == screen.mediaId }
             if (item != null) {
-                PhotoViewerScreen(
+                VideoPlayerScreen(
                     item = item,
+                    mediaList = listToUse,
                     onBack = { viewModel.navigateTo(Screen.VaultMain) },
-                    onDelete = { viewModel.deleteItem(it) },
-                    onToggleFavorite = { viewModel.toggleFavorite(it) },
-                    onRestore = { mediaItem, treeUri ->
-                        viewModel.restoreMedia(mediaItem, treeUri, deleteFromVault = false)
+                    onSavePlaybackPosition = { id, pos ->
+                        viewModel.updatePlaybackPosition(id, pos)
                     }
                 )
             } else {
@@ -184,28 +200,14 @@ fun AppNavigation(viewModel: VaultViewModel) {
             }
         }
 
-        is Screen.VideoPlayer -> {
-            val item = allMedia.find { it.id == screen.mediaId }
-            if (item != null) {
-                VideoPlayerScreen(
-                    item = item,
-                    onBack = { viewModel.navigateTo(Screen.VaultMain) }
-                )
-            } else {
-                viewModel.navigateTo(Screen.VaultMain)
-            }
-        }
-
         is Screen.AudioPlayer -> {
-            val item = allMedia.find { it.id == screen.mediaId }
-            if (item != null) {
-                AudioPlayerScreen(
-                    item = item,
-                    onBack = { viewModel.navigateTo(Screen.VaultMain) }
-                )
-            } else {
-                viewModel.navigateTo(Screen.VaultMain)
-            }
+            val audios = allMedia.filter { it.mediaType == com.example.data.model.MediaType.AUDIO.name }
+            val listToUse = if (audios.any { it.id == screen.mediaId }) audios else allMedia
+            AudioPlayerScreen(
+                mediaList = listToUse,
+                initialMediaId = screen.mediaId,
+                onBack = { viewModel.navigateTo(Screen.VaultMain) }
+            )
         }
 
         is Screen.NoteViewer -> {

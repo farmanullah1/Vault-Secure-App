@@ -21,5 +21,8 @@ data class VaultMediaItem(
     val isFavorite: Boolean = false,
     val relativePath: String = "",
     val folderName: String = "Default",
-    val noteContent: String = ""
+    val noteContent: String = "",
+    val isTrash: Boolean = false,
+    val trashTimestamp: Long = 0L,
+    val lastPlayedPositionMs: Long = 0L
 )

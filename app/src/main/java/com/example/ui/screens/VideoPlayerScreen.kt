@@ -73,6 +73,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Timer
@@ -176,10 +178,24 @@ data class LockTouchRipple(
 @Composable
 fun VideoPlayerScreen(
     item: VaultMediaItem,
-    onBack: () -> Unit
+    mediaList: List<VaultMediaItem> = listOf(item),
+    onBack: () -> Unit,
+    onSavePlaybackPosition: ((Long, Long) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+
+    val safeList = remember(mediaList, item) {
+        if (mediaList.isNotEmpty()) mediaList else listOf(item)
+    }
+
+    var currentIndex by remember(safeList, item.id) {
+        val idx = safeList.indexOfFirst { it.id == item.id }
+        mutableIntStateOf(if (idx >= 0) idx else 0)
+    }
+
+    val currentItem = safeList.getOrNull(currentIndex) ?: item
+
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
     val maxVolume = remember { audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15 }
 
@@ -191,6 +207,10 @@ fun VideoPlayerScreen(
     var showControls by remember { mutableStateOf(true) }
     var isControlsLocked by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Resume playback prompt
+    var showResumePrompt by remember { mutableStateOf(false) }
+    var resumeTargetPosition by remember { mutableLongStateOf(0L) }
 
     // Screen & Display Modes
     var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
@@ -246,13 +266,18 @@ fun VideoPlayerScreen(
     val lockTouchRipples = remember { mutableStateListOf<LockTouchRipple>() }
     var showLockHint by remember { mutableStateOf(false) }
 
+    BackHandler {
+        onSavePlaybackPosition?.invoke(currentItem.id, currentPosition)
+        onBack()
+    }
+
     fun performHaptic() {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
     }
 
     fun openWithExternalPlayer() {
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(Uri.parse(item.uriString), item.mimeType.ifEmpty { "video/*" })
+            setDataAndType(Uri.parse(currentItem.uriString), currentItem.mimeType.ifEmpty { "video/*" })
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         try {
@@ -282,9 +307,9 @@ fun VideoPlayerScreen(
     }
 
     // Initialize ExoPlayer
-    DisposableEffect(item.uriString) {
+    DisposableEffect(currentItem.uriString) {
         val player = ExoPlayer.Builder(context).build().apply {
-            val mediaItem = MediaItem.fromUri(Uri.parse(item.uriString))
+            val mediaItem = MediaItem.fromUri(Uri.parse(currentItem.uriString))
             setMediaItem(mediaItem)
             prepare()
             playWhenReady = true
@@ -298,6 +323,10 @@ fun VideoPlayerScreen(
                     if (playbackState == Player.STATE_READY) {
                         totalDuration = duration.coerceAtLeast(0L)
                         availableTracks = currentTracks
+                        if (currentItem.lastPlayedPositionMs > 10000L && currentItem.lastPlayedPositionMs < (totalDuration - 10000L)) {
+                            resumeTargetPosition = currentItem.lastPlayedPositionMs
+                            showResumePrompt = true
+                        }
                     }
                 }
 
@@ -314,6 +343,7 @@ fun VideoPlayerScreen(
         exoPlayer = player
 
         onDispose {
+            onSavePlaybackPosition?.invoke(currentItem.id, currentPosition)
             if (!playInBackground) {
                 player.release()
                 exoPlayer = null
@@ -836,7 +866,7 @@ fun VideoPlayerScreen(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = item.fileName,
+                            text = currentItem.fileName,
                             color = Color.White,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -844,8 +874,9 @@ fun VideoPlayerScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            val queueText = if (safeList.size > 1) "${currentIndex + 1}/${safeList.size} • " else ""
                             Text(
-                                text = "${formatFileSize(item.fileSize)} • $decoderMode Decoder",
+                                text = "$queueText${formatFileSize(currentItem.fileSizeBytes)} • $decoderMode Decoder",
                                 fontSize = 11.sp,
                                 color = TextMuted
                             )
@@ -999,14 +1030,84 @@ fun VideoPlayerScreen(
                     }
                 }
 
+                // Resume Playback Prompt Banner
+                AnimatedVisibility(
+                    visible = showResumePrompt,
+                    enter = fadeIn() + slideInVertically(),
+                    exit = fadeOut() + slideOutVertically(),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 75.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = DarkCarbon.copy(alpha = 0.92f),
+                        border = CardDefaults.outlinedCardBorder().copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(VaultCyan)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Resume from ${formatDuration(resumeTargetPosition)}?",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Button(
+                                onClick = {
+                                    exoPlayer?.seekTo(resumeTargetPosition)
+                                    currentPosition = resumeTargetPosition
+                                    showResumePrompt = false
+                                    performHaptic()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = VaultCyan),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Resume", color = DarkCarbon, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            TextButton(onClick = { showResumePrompt = false }) {
+                                Text("Dismiss", color = TextMuted, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+
                 // =====================================================================
                 // Center Play/Pause & Skip Controls
                 // =====================================================================
                 Row(
                     modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(36.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Skip Previous Video
+                    IconButton(
+                        onClick = {
+                            if (safeList.size > 1) {
+                                onSavePlaybackPosition?.invoke(currentItem.id, currentPosition)
+                                if (currentIndex > 0) currentIndex-- else currentIndex = safeList.size - 1
+                            }
+                            performHaptic()
+                        },
+                        enabled = safeList.size > 1,
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(DarkCarbon.copy(alpha = 0.65f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipPrevious,
+                            contentDescription = "Previous Video",
+                            tint = if (safeList.size > 1) Color.White else Color.Gray,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
                     IconButton(
                         onClick = {
                             exoPlayer?.let {
@@ -1060,6 +1161,29 @@ fun VideoPlayerScreen(
                             .background(DarkCarbon.copy(alpha = 0.65f))
                     ) {
                         Icon(imageVector = Icons.Default.FastForward, contentDescription = "Forward 10s", tint = Color.White, modifier = Modifier.size(28.dp))
+                    }
+
+                    // Skip Next Video
+                    IconButton(
+                        onClick = {
+                            if (safeList.size > 1) {
+                                onSavePlaybackPosition?.invoke(currentItem.id, currentPosition)
+                                currentIndex = (currentIndex + 1) % safeList.size
+                            }
+                            performHaptic()
+                        },
+                        enabled = safeList.size > 1,
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(DarkCarbon.copy(alpha = 0.65f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Next Video",
+                            tint = if (safeList.size > 1) Color.White else Color.Gray,
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
                 }
 
@@ -1471,11 +1595,11 @@ fun VideoPlayerScreen(
                 title = { Text("Media Details", color = TextWhite, fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("File Name: ${item.fileName}", color = TextWhite, fontSize = 13.sp)
-                        Text("File Size: ${formatFileSize(item.fileSize)}", color = TextMuted, fontSize = 13.sp)
+                        Text("File Name: ${currentItem.fileName}", color = TextWhite, fontSize = 13.sp)
+                        Text("File Size: ${formatFileSize(currentItem.fileSizeBytes)}", color = TextMuted, fontSize = 13.sp)
                         Text("Duration: ${formatDuration(totalDuration)}", color = TextMuted, fontSize = 13.sp)
                         Text("Resolution: ${videoFormat?.width ?: "Auto"} × ${videoFormat?.height ?: "Auto"}", color = TextMuted, fontSize = 13.sp)
-                        Text("Video Codec: ${videoFormat?.sampleMimeType ?: item.mimeType}", color = TextMuted, fontSize = 13.sp)
+                        Text("Video Codec: ${videoFormat?.sampleMimeType ?: currentItem.mimeType}", color = TextMuted, fontSize = 13.sp)
                         Text("Frame Rate: ${videoFormat?.frameRate?.toInt() ?: 30} fps", color = TextMuted, fontSize = 13.sp)
                         Text("Decoder Acceleration: $decoderMode (Hardware)", color = VaultCyan, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }

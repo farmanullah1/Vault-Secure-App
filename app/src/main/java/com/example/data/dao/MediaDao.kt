@@ -12,13 +12,13 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface MediaDao {
 
-    @Query("SELECT * FROM vault_media ORDER BY dateAdded DESC")
+    @Query("SELECT * FROM vault_media WHERE isTrash = 0 ORDER BY dateAdded DESC")
     fun getAllMedia(): Flow<List<VaultMediaItem>>
 
-    @Query("SELECT * FROM vault_media WHERE mediaType = :type ORDER BY dateAdded DESC")
+    @Query("SELECT * FROM vault_media WHERE mediaType = :type AND isTrash = 0 ORDER BY dateAdded DESC")
     fun getMediaByType(type: String): Flow<List<VaultMediaItem>>
 
-    @Query("SELECT * FROM vault_media WHERE isFavorite = 1 ORDER BY dateAdded DESC")
+    @Query("SELECT * FROM vault_media WHERE isFavorite = 1 AND isTrash = 0 ORDER BY dateAdded DESC")
     fun getFavoriteMedia(): Flow<List<VaultMediaItem>>
 
     @Query("SELECT * FROM vault_media WHERE id = :id LIMIT 1")
@@ -27,10 +27,10 @@ interface MediaDao {
     @Query("SELECT * FROM vault_media WHERE uriString = :uriString LIMIT 1")
     suspend fun getMediaByUri(uriString: String): VaultMediaItem?
 
-    @Query("SELECT * FROM vault_media WHERE fileName LIKE '%' || :query || '%' ORDER BY dateAdded DESC")
+    @Query("SELECT * FROM vault_media WHERE fileName LIKE '%' || :query || '%' AND isTrash = 0 ORDER BY dateAdded DESC")
     fun searchMedia(query: String): Flow<List<VaultMediaItem>>
 
-    @Query("SELECT COUNT(*) FROM vault_media WHERE mediaType = :type")
+    @Query("SELECT COUNT(*) FROM vault_media WHERE mediaType = :type AND isTrash = 0")
     fun countByType(type: String): Flow<Int>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -45,6 +45,37 @@ interface MediaDao {
     @Query("UPDATE vault_media SET isFavorite = :isFav WHERE id = :id")
     suspend fun updateFavorite(id: Long, isFav: Boolean)
 
+    @Query("UPDATE vault_media SET lastPlayedPositionMs = :positionMs WHERE id = :id")
+    suspend fun updateLastPlayedPosition(id: Long, positionMs: Long)
+
+    // Trash operations (Recycle Bin)
+    @Query("SELECT * FROM vault_media WHERE isTrash = 1 ORDER BY trashTimestamp DESC")
+    fun getTrashMedia(): Flow<List<VaultMediaItem>>
+
+    @Query("SELECT COUNT(*) FROM vault_media WHERE isTrash = 1")
+    fun countTrash(): Flow<Int>
+
+    @Query("UPDATE vault_media SET isTrash = 1, trashTimestamp = :timestamp WHERE id = :id")
+    suspend fun moveToTrash(id: Long, timestamp: Long)
+
+    @Query("UPDATE vault_media SET isTrash = 1, trashTimestamp = :timestamp WHERE id IN (:ids)")
+    suspend fun moveToTrashBatch(ids: List<Long>, timestamp: Long)
+
+    @Query("UPDATE vault_media SET isTrash = 0, trashTimestamp = 0 WHERE id = :id")
+    suspend fun restoreFromTrash(id: Long)
+
+    @Query("UPDATE vault_media SET isTrash = 0, trashTimestamp = 0 WHERE id IN (:ids)")
+    suspend fun restoreFromTrashBatch(ids: List<Long>)
+
+    @Query("SELECT * FROM vault_media WHERE isTrash = 1")
+    suspend fun getTrashMediaList(): List<VaultMediaItem>
+
+    @Query("SELECT * FROM vault_media WHERE isTrash = 1 AND trashTimestamp < :cutoffTimestamp")
+    suspend fun getTrashOlderThan(cutoffTimestamp: Long): List<VaultMediaItem>
+
+    @Query("DELETE FROM vault_media WHERE isTrash = 1 AND trashTimestamp < :cutoffTimestamp")
+    suspend fun purgeTrashOlderThan(cutoffTimestamp: Long)
+
     @Delete
     suspend fun delete(item: VaultMediaItem)
 
@@ -54,13 +85,16 @@ interface MediaDao {
     @Query("DELETE FROM vault_media WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
 
-    @Query("SELECT DISTINCT folderName FROM vault_media WHERE folderName != '' ORDER BY folderName ASC")
+    @Query("DELETE FROM vault_media WHERE isTrash = 1")
+    suspend fun emptyTrash()
+
+    @Query("SELECT DISTINCT folderName FROM vault_media WHERE folderName != '' AND isTrash = 0 ORDER BY folderName ASC")
     fun getAllFolders(): Flow<List<String>>
 
-    @Query("SELECT * FROM vault_media WHERE folderName = :folderName ORDER BY dateAdded DESC")
+    @Query("SELECT * FROM vault_media WHERE folderName = :folderName AND isTrash = 0 ORDER BY dateAdded DESC")
     fun getMediaByFolder(folderName: String): Flow<List<VaultMediaItem>>
 
-    @Query("SELECT * FROM vault_media WHERE mediaType IN ('DOCUMENT', 'NOTE') ORDER BY dateAdded DESC")
+    @Query("SELECT * FROM vault_media WHERE mediaType IN ('DOCUMENT', 'NOTE') AND isTrash = 0 ORDER BY dateAdded DESC")
     fun getDocumentsAndNotes(): Flow<List<VaultMediaItem>>
 
     @Query("UPDATE vault_media SET folderName = :folderName WHERE id IN (:ids)")

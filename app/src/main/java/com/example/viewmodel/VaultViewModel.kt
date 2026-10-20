@@ -9,6 +9,7 @@ import com.example.data.model.MediaType
 import com.example.data.model.VaultMediaItem
 import com.example.data.repository.ImportProgress
 import com.example.data.repository.VaultRepository
+import com.example.security.DisguiseMode
 import com.example.security.PinSecurityManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -17,8 +18,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-
-import com.example.security.DisguiseMode
 
 sealed class Screen {
     object SimCover : Screen()
@@ -40,6 +39,7 @@ enum class VaultTab {
     AUDIO,
     DOCS_NOTES,
     ALBUMS,
+    TRASH,
     SETTINGS
 }
 
@@ -98,33 +98,52 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedFolder = MutableStateFlow<String?>(null)
     val selectedFolder: StateFlow<String?> = _selectedFolder.asStateFlow()
 
+    // Dynamic grid columns: 2, 3, or 4
+    private val _gridColumns = MutableStateFlow(3)
+    val gridColumns: StateFlow<Int> = _gridColumns.asStateFlow()
+
+    // Quick filter chip: ALL, FAVORITES, LARGE, RECENT
+    private val _activeFilterChip = MutableStateFlow("ALL")
+    val activeFilterChip: StateFlow<String> = _activeFilterChip.asStateFlow()
+
     val allFolders: StateFlow<List<String>> = repository.allFolders
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allMedia: StateFlow<List<VaultMediaItem>> = repository.allMedia
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val trashMedia: StateFlow<List<VaultMediaItem>> = repository.trashMedia
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val trashCount: StateFlow<Int> = repository.trashCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     val filteredMedia: StateFlow<List<VaultMediaItem>> = combine(
         allMedia,
+        trashMedia,
         _selectedTab,
         _searchQuery,
         _sortOption,
-        combine(_showFavoritesOnly, _selectedFolder) { favs, folder -> Pair(favs, folder) }
-    ) { mediaList, tab, query, sort, favsAndFolder ->
-        val favsOnly = favsAndFolder.first
-        val folder = favsAndFolder.second
+        combine(_showFavoritesOnly, _selectedFolder, _activeFilterChip) { favs, folder, chip -> Triple(favs, folder, chip) }
+    ) { allList, trashList, tab, query, sort, filters ->
+        val favsOnly = filters.first
+        val folder = filters.second
+        val filterChip = filters.third
+
+        val sourceList = if (tab == VaultTab.TRASH) trashList else allList
 
         val typeFiltered = when (tab) {
-            VaultTab.ALL -> mediaList
-            VaultTab.PHOTOS -> mediaList.filter { it.mediaType == MediaType.PHOTO.name }
-            VaultTab.VIDEOS -> mediaList.filter { it.mediaType == MediaType.VIDEO.name }
-            VaultTab.AUDIO -> mediaList.filter { it.mediaType == MediaType.AUDIO.name }
-            VaultTab.DOCS_NOTES -> mediaList.filter { it.mediaType == MediaType.DOCUMENT.name || it.mediaType == MediaType.NOTE.name }
-            VaultTab.ALBUMS -> if (folder != null) mediaList.filter { it.folderName.equals(folder, ignoreCase = true) } else mediaList
+            VaultTab.ALL -> sourceList
+            VaultTab.PHOTOS -> sourceList.filter { it.mediaType == MediaType.PHOTO.name }
+            VaultTab.VIDEOS -> sourceList.filter { it.mediaType == MediaType.VIDEO.name }
+            VaultTab.AUDIO -> sourceList.filter { it.mediaType == MediaType.AUDIO.name }
+            VaultTab.DOCS_NOTES -> sourceList.filter { it.mediaType == MediaType.DOCUMENT.name || it.mediaType == MediaType.NOTE.name }
+            VaultTab.ALBUMS -> if (folder != null) sourceList.filter { it.folderName.equals(folder, ignoreCase = true) } else sourceList
+            VaultTab.TRASH -> trashList
             else -> emptyList()
         }
 
-        val folderFiltered = if (folder != null && tab != VaultTab.ALBUMS) {
+        val folderFiltered = if (folder != null && tab != VaultTab.ALBUMS && tab != VaultTab.TRASH) {
             typeFiltered.filter { it.folderName.equals(folder, ignoreCase = true) }
         } else {
             typeFiltered
@@ -136,10 +155,16 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             folderFiltered
         }
 
+        val chipFiltered = when (filterChip) {
+            "FAVORITES" -> favFiltered.filter { it.isFavorite }
+            "LARGE" -> favFiltered.filter { it.fileSizeBytes > 50L * 1024 * 1024 } // > 50 MB
+            else -> favFiltered
+        }
+
         val searched = if (query.isBlank()) {
-            favFiltered
+            chipFiltered
         } else {
-            favFiltered.filter {
+            chipFiltered.filter {
                 it.fileName.contains(query, ignoreCase = true) ||
                 it.noteContent.contains(query, ignoreCase = true) ||
                 it.folderName.contains(query, ignoreCase = true)
@@ -156,6 +181,9 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         refreshNoMediaStatus()
+        viewModelScope.launch {
+            repository.purgeOldTrash()
+        }
     }
 
     fun navigateTo(screen: Screen) {
@@ -165,6 +193,14 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     fun selectTab(tab: VaultTab) {
         _selectedTab.value = tab
         _selectedItemIds.value = emptySet()
+    }
+
+    fun setGridColumns(cols: Int) {
+        _gridColumns.value = cols.coerceIn(2, 4)
+    }
+
+    fun setActiveFilterChip(chip: String) {
+        _activeFilterChip.value = chip
     }
 
     fun setSearchQuery(query: String) {
@@ -202,7 +238,27 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         if (idsToDelete.isEmpty()) return
         viewModelScope.launch {
             val itemsToDelete = allMedia.value.filter { idsToDelete.contains(it.id) }
-            repository.deleteBatch(itemsToDelete)
+            repository.moveToTrashBatch(itemsToDelete)
+            _selectedItemIds.value = emptySet()
+        }
+    }
+
+    fun restoreSelectedFromTrash() {
+        val idsToRestore = _selectedItemIds.value
+        if (idsToRestore.isEmpty()) return
+        viewModelScope.launch {
+            val items = trashMedia.value.filter { idsToRestore.contains(it.id) }
+            repository.restoreFromTrashBatch(items)
+            _selectedItemIds.value = emptySet()
+        }
+    }
+
+    fun permanentlyDeleteSelected(secureShred: Boolean = false) {
+        val ids = _selectedItemIds.value
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            val items = trashMedia.value.filter { ids.contains(it.id) }
+            repository.permanentDeleteBatch(items, secureShred)
             _selectedItemIds.value = emptySet()
         }
     }
@@ -300,11 +356,29 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteItem(item: VaultMediaItem) {
         viewModelScope.launch {
-            repository.deleteMedia(item)
+            repository.moveToTrash(item)
             if (_activeAudioItem.value?.id == item.id) {
                 _activeAudioItem.value = null
                 _isAudioPlaying.value = false
             }
+        }
+    }
+
+    fun restoreItemFromTrash(item: VaultMediaItem) {
+        viewModelScope.launch {
+            repository.restoreFromTrash(item)
+        }
+    }
+
+    fun permanentDeleteItem(item: VaultMediaItem, secureShred: Boolean = false) {
+        viewModelScope.launch {
+            repository.permanentDelete(item, secureShred)
+        }
+    }
+
+    fun emptyTrash(secureShred: Boolean = false) {
+        viewModelScope.launch {
+            repository.emptyTrash(secureShred)
         }
     }
 
@@ -317,6 +391,12 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleFavorite(item: VaultMediaItem) {
         viewModelScope.launch {
             repository.toggleFavorite(item)
+        }
+    }
+
+    fun updatePlaybackPosition(id: Long, positionMs: Long) {
+        viewModelScope.launch {
+            repository.updateLastPlayedPosition(id, positionMs)
         }
     }
 
