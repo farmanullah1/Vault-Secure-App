@@ -1,6 +1,7 @@
 package com.example
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -12,6 +13,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
+import com.example.security.PinSecurityManager
 import com.example.ui.screens.AudioPlayerScreen
 import com.example.ui.screens.GalleryChecklistScreen
 import com.example.ui.screens.PhotoViewerScreen
@@ -30,6 +32,9 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Apply FLAG_SECURE if enabled (Spec 9.5: prevents screenshots & recents leaks)
+        applySecurityFlags()
+
         setContent {
             MyApplicationTheme {
                 Surface(
@@ -42,11 +47,58 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        checkAutoLockTimeout()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applySecurityFlags()
+        checkAutoLockTimeout()
+    }
+
+    private fun applySecurityFlags() {
+        if (viewModel.securityManager.isFlagSecureEnabled) {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE
+            )
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
+    private fun checkAutoLockTimeout() {
+        if (viewModel.isUnlocked.value) {
+            val autoLockSetting = viewModel.securityManager.autoLockSeconds
+            when {
+                autoLockSetting == PinSecurityManager.AUTO_LOCK_ON_APP_CLOSE -> {
+                    // Stays unlocked while app process remains active;
+                    // re-requires password whenever app is closed and reopened.
+                }
+                autoLockSetting > 0 -> {
+                    val lastBg = viewModel.securityManager.lastBackgroundTimestamp
+                    if (lastBg > 0L) {
+                        val elapsed = System.currentTimeMillis() - lastBg
+                        if (elapsed >= autoLockSetting * 1000L) {
+                            viewModel.lockVault()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     override fun onStop() {
         super.onStop()
-        // Auto-lock when user backgrounds the application
         if (viewModel.isUnlocked.value) {
-            viewModel.lockVault()
+            val autoLockSetting = viewModel.securityManager.autoLockSeconds
+            if (autoLockSetting == PinSecurityManager.AUTO_LOCK_IMMEDIATE) {
+                viewModel.lockVault()
+            } else {
+                viewModel.securityManager.lastBackgroundTimestamp = System.currentTimeMillis()
+            }
         }
     }
 }

@@ -131,6 +131,7 @@ fun VaultMainScreen(
     var showImportChoiceDialog by remember { mutableStateOf(false) }
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
     var isMoveSelected by remember { mutableStateOf(false) }
+    var showFirstTimeSetup by remember { mutableStateOf(!viewModel.securityManager.isFirstTimeSetupDone) }
 
     val isSelectionMode = selectedItemIds.isNotEmpty()
 
@@ -623,6 +624,15 @@ fun VaultMainScreen(
         ImportProgressDialog(
             progress = progress,
             onDismiss = { viewModel.dismissImportDialog() }
+        )
+    }
+
+    if (showFirstTimeSetup) {
+        com.example.ui.components.FirstTimeSetupDialog(
+            viewModel = viewModel,
+            onComplete = {
+                showFirstTimeSetup = false
+            }
         )
     }
 }

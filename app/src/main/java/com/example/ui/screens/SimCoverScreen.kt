@@ -4,9 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,23 +23,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DataUsage
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.SignalCellular4Bar
 import androidx.compose.material.icons.filled.SimCard
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.WifiCalling3
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -77,18 +73,16 @@ import androidx.fragment.app.FragmentActivity
 import com.example.security.BiometricHelper
 import com.example.ui.components.PinKeypadDialog
 import com.example.ui.components.PinSetupDialog
-import com.example.ui.theme.DarkCarbon
-import com.example.ui.theme.JazzRuby
-import com.example.ui.theme.JazzRubyContainer
-import com.example.ui.theme.SurfaceBorder
-import com.example.ui.theme.SurfaceCard
-import com.example.ui.theme.SurfaceElevated
-import com.example.ui.theme.TextDim
-import com.example.ui.theme.TextMuted
-import com.example.ui.theme.TextWhite
+import com.example.ui.theme.CoverAccentBlue
+import com.example.ui.theme.CoverBackground
+import com.example.ui.theme.CoverSurface
+import com.example.ui.theme.CoverSurfaceBorder
+import com.example.ui.theme.CoverTextPrimary
+import com.example.ui.theme.CoverTextSecondary
+import com.example.ui.theme.JazzGradientStart
+import com.example.ui.theme.VaultAccentBrush
 import com.example.ui.theme.VaultEmerald
-import com.example.ui.theme.ZongAmber
-import com.example.ui.theme.ZongAmberContainer
+import com.example.ui.theme.ZongGradientStart
 import com.example.viewmodel.VaultViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -104,14 +98,24 @@ fun SimCoverScreen(
     var showPinDialog by remember { mutableStateOf(false) }
     var showPinSetupDialog by remember { mutableStateOf(false) }
     var showPostAuthSheet by remember { mutableStateOf(false) }
-    var showUssdDialog by remember { mutableStateOf(false) }
-    var ussdTitle by remember { mutableStateOf("") }
-    var ussdMessage by remember { mutableStateOf("") }
     var showStkUnavailableDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
+    var showHelpDialog by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
 
     val activeCarrierName = if (selectedCarrierTab == 0) "Jazz" else "Zong 4G"
     val activeHelpline = if (selectedCarrierTab == 0) securityManager.jazzHelpline else securityManager.zongHelpline
-    val activeCarrierColor = if (selectedCarrierTab == 0) JazzRuby else ZongAmber
+    val activeCarrierColor = if (selectedCarrierTab == 0) JazzGradientStart else ZongGradientStart
+
+    fun launchDialer(ussdOrNumber: String) {
+        val encoded = Uri.encode(ussdOrNumber)
+        val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$encoded"))
+        try {
+            context.startActivity(dialIntent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "No dialer application found", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     fun triggerVaultAuthentication() {
         if (!securityManager.isPinSetup) {
@@ -123,10 +127,14 @@ fun SimCoverScreen(
         if (activity != null && securityManager.isBiometricEnabled && BiometricHelper.isBiometricAvailable(context)) {
             BiometricHelper.showBiometricPrompt(
                 activity = activity,
-                title = "$activeCarrierName Security Verification",
-                subtitle = "Confirm biometric authentication to manage secure USIM services",
+                title = "Security Verification",
+                subtitle = "Authenticate to access secure services",
                 onSuccess = {
-                    showPostAuthSheet = true
+                    if (securityManager.goStraightToVault) {
+                        viewModel.unlockVault()
+                    } else {
+                        showPostAuthSheet = true
+                    }
                 },
                 onError = {
                     showPinDialog = true
@@ -149,7 +157,7 @@ fun SimCoverScreen(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(activeCarrierColor.copy(alpha = 0.2f)),
+                                .background(activeCarrierColor.copy(alpha = 0.15f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -164,19 +172,19 @@ fun SimCoverScreen(
                             Text(
                                 text = "SIM Services Manager",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 17.sp,
-                                color = TextWhite
+                                fontSize = 16.sp,
+                                color = CoverTextPrimary
                             )
                             Text(
                                 text = "Dual SIM Active • VoLTE Connected",
                                 fontSize = 11.sp,
-                                color = TextMuted
+                                color = CoverTextSecondary
                             )
                         }
                     }
                 },
                 actions = {
-                    // Discreet security lock icon in TopBar
+                    // Discreet security lock icon for quick unlock
                     IconButton(
                         onClick = { triggerVaultAuthentication() },
                         modifier = Modifier.testTag("carrier_security_entry_icon")
@@ -184,14 +192,44 @@ fun SimCoverScreen(
                         Icon(
                             imageVector = Icons.Default.Security,
                             contentDescription = "USIM Security",
-                            tint = TextMuted
+                            tint = CoverTextSecondary
                         )
                     }
+
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Menu",
+                                tint = CoverTextSecondary
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false },
+                            modifier = Modifier.background(CoverSurface)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("About SIM Services", color = CoverTextPrimary) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showAboutDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Help & Support", color = CoverTextPrimary) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showHelpDialog = true
+                                }
+                            )
+                        }
+                    }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceElevated)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = CoverSurface)
             )
         },
-        containerColor = DarkCarbon,
+        containerColor = CoverBackground,
         modifier = modifier.testTag("sim_cover_screen")
     ) { innerPadding ->
         Column(
@@ -202,8 +240,8 @@ fun SimCoverScreen(
             // Carrier Switcher Tabs
             TabRow(
                 selectedTabIndex = selectedCarrierTab,
-                containerColor = SurfaceElevated,
-                contentColor = TextWhite,
+                containerColor = CoverSurface,
+                contentColor = CoverTextPrimary,
                 indicator = { tabPositions ->
                     TabRowDefaults.SecondaryIndicator(
                         Modifier.tabIndicatorOffset(tabPositions[selectedCarrierTab]),
@@ -220,13 +258,13 @@ fun SimCoverScreen(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(if (selectedCarrierTab == 0) JazzRuby else TextMuted)
+                                    .background(if (selectedCarrierTab == 0) JazzGradientStart else CoverTextSecondary)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "SIM 1: Jazz",
                                 fontWeight = if (selectedCarrierTab == 0) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedCarrierTab == 0) TextWhite else TextMuted
+                                color = if (selectedCarrierTab == 0) CoverTextPrimary else CoverTextSecondary
                             )
                         }
                     },
@@ -242,13 +280,13 @@ fun SimCoverScreen(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(if (selectedCarrierTab == 1) ZongAmber else TextMuted)
+                                    .background(if (selectedCarrierTab == 1) ZongGradientStart else CoverTextSecondary)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "SIM 2: Zong 4G",
                                 fontWeight = if (selectedCarrierTab == 1) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedCarrierTab == 1) TextWhite else TextMuted
+                                color = if (selectedCarrierTab == 1) CoverTextPrimary else CoverTextSecondary
                             )
                         }
                     },
@@ -264,40 +302,32 @@ fun SimCoverScreen(
             ) {
                 item { Spacer(modifier = Modifier.height(6.dp)) }
 
-                // Account Balance Card
+                // Realistic Carrier Account Balance Card
                 item {
-                    if (selectedCarrierTab == 0) {
-                        JazzAccountCard(
-                            helpline = securityManager.jazzHelpline,
-                            onCheckBalance = {
-                                ussdTitle = "Jazz USSD Service"
-                                ussdMessage = "Your prepaid balance is Rs. 248.50. Valid until 28 Nov 2026. Dial *111*1# for mini-statement."
-                                showUssdDialog = true
-                            },
-                            onTapSecurity = { triggerVaultAuthentication() }
-                        )
-                    } else {
-                        ZongAccountCard(
-                            helpline = securityManager.zongHelpline,
-                            onCheckBalance = {
-                                ussdTitle = "Zong 4G USSD Service"
-                                ussdMessage = "Your current account balance is Rs. 412.18. Valid until 04 Dec 2026. Dial *6464# for package details."
-                                showUssdDialog = true
-                            },
-                            onTapSecurity = { triggerVaultAuthentication() }
-                        )
-                    }
+                    CarrierAccountBalanceCard(
+                        carrierTitle = if (selectedCarrierTab == 0) "Jazz Pakistan" else "Zong 4G Pakistan",
+                        phoneNumber = if (selectedCarrierTab == 0) "+92 300 8472910" else "+92 312 9182743",
+                        balance = if (selectedCarrierTab == 0) "Rs. 248.50" else "Rs. 412.18",
+                        badgeLabel = if (selectedCarrierTab == 0) "LTE Ready" else "Super 4G",
+                        ussdCode = if (selectedCarrierTab == 0) "*111#" else "*222#",
+                        accentColor = activeCarrierColor,
+                        onCheckBalance = {
+                            launchDialer(if (selectedCarrierTab == 0) "*111#" else "*222#")
+                        },
+                        onTapSecurity = { triggerVaultAuthentication() }
+                    )
                 }
 
                 // Active Bundle Usage Breakdown Card
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = CoverSurface),
+                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(CoverSurfaceBorder)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Column(modifier = Modifier.padding(18.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -307,7 +337,7 @@ fun SimCoverScreen(
                                     text = if (selectedCarrierTab == 0) "Super Duper Plus Bundle" else "Weekly Super Max Bundle",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = TextWhite
+                                    color = CoverTextPrimary
                                 )
                                 Text(
                                     text = "Auto-Renew ON",
@@ -319,13 +349,12 @@ fun SimCoverScreen(
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            // Data Meter
+                            // 4G Data Meter
                             val dataRemaining = if (selectedCarrierTab == 0) "11.4 GB / 15 GB" else "22.8 GB / 30 GB"
-                            val dataFraction = if (selectedCarrierTab == 0) 0.76f else 0.76f
-                            UsageMeterRow(
+                            CarrierUsageMeterRow(
                                 label = "4G High-Speed Data",
                                 detail = dataRemaining,
-                                fraction = dataFraction,
+                                fraction = 0.76f,
                                 barColor = activeCarrierColor
                             )
 
@@ -333,7 +362,7 @@ fun SimCoverScreen(
 
                             // Minutes Meter
                             val minsRemaining = if (selectedCarrierTab == 0) "1,840 / 2,000 Mins" else "4,600 / 5,000 Mins"
-                            UsageMeterRow(
+                            CarrierUsageMeterRow(
                                 label = if (selectedCarrierTab == 0) "On-Net Jazz Mins" else "On-Net Zong Mins",
                                 detail = minsRemaining,
                                 fraction = 0.92f,
@@ -342,13 +371,13 @@ fun SimCoverScreen(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // Off-Net Mins Meter
+                            // Off-Net Minutes
                             val offNet = if (selectedCarrierTab == 0) "124 / 150 Mins" else "88 / 100 Mins"
-                            UsageMeterRow(
+                            CarrierUsageMeterRow(
                                 label = "Other Network Mins",
                                 detail = offNet,
                                 fraction = 0.84f,
-                                barColor = Color(0xFF38BDF8)
+                                barColor = CoverAccentBlue
                             )
                         }
                     }
@@ -360,7 +389,7 @@ fun SimCoverScreen(
                         text = "CARRIER ACTIONS & SERVICES",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextDim,
+                        color = CoverTextSecondary,
                         letterSpacing = 1.sp,
                         modifier = Modifier.padding(start = 4.dp, top = 4.dp)
                     )
@@ -371,26 +400,25 @@ fun SimCoverScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        QuickActionTile(
+                        CarrierActionTile(
                             icon = Icons.Default.AccountBalanceWallet,
                             title = "Check Balance",
                             subtitle = if (selectedCarrierTab == 0) "*111#" else "*222#",
+                            accentColor = activeCarrierColor,
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                ussdTitle = "$activeCarrierName Account Query"
-                                ussdMessage = "Account Status: Active\nBalance: Rs. ${if (selectedCarrierTab == 0) "248.50" else "412.18"}\nExpiry: 30 days"
-                                showUssdDialog = true
+                                launchDialer(if (selectedCarrierTab == 0) "*111#" else "*222#")
                             }
                         )
 
-                        QuickActionTile(
+                        CarrierActionTile(
                             icon = Icons.Default.Call,
                             title = "Helpline",
                             subtitle = "Dial $activeHelpline",
+                            accentColor = CoverAccentBlue,
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$activeHelpline"))
-                                context.startActivity(intent)
+                                launchDialer(activeHelpline)
                             }
                         )
                     }
@@ -401,23 +429,22 @@ fun SimCoverScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        QuickActionTile(
+                        CarrierActionTile(
                             icon = Icons.Default.DataUsage,
                             title = "Data Packages",
                             subtitle = if (selectedCarrierTab == 0) "*443#" else "*6464#",
+                            accentColor = CoverAccentBlue,
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                ussdTitle = "$activeCarrierName Bundle Menu"
-                                ussdMessage = "1. Daily 1GB Rs. 25\n2. Weekly Mega 10GB Rs. 280\n3. Monthly Super 30GB Rs. 950\nReply with bundle number to activate."
-                                showUssdDialog = true
+                                launchDialer(if (selectedCarrierTab == 0) "*443#" else "*6464#")
                             }
                         )
 
-                        // Secret Gate Tile: Security & PIN Management (Triggers Biometric Prompt)
-                        QuickActionTile(
+                        // Secret Gate Tile: Intercepts and triggers PIN verification!
+                        CarrierActionTile(
                             icon = Icons.Default.Security,
                             title = "USIM Security",
-                            subtitle = "Verify & Manage",
+                            subtitle = "PIN & Access",
                             accentColor = activeCarrierColor,
                             modifier = Modifier
                                 .weight(1f)
@@ -429,13 +456,13 @@ fun SimCoverScreen(
                     }
                 }
 
-                // Radio Frequency & Telemetry Card
+                // Network & Cell Telemetry Card
                 item {
                     Text(
                         text = "NETWORK & CELL TELEMETRY",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextDim,
+                        color = CoverTextSecondary,
                         letterSpacing = 1.sp,
                         modifier = Modifier.padding(start = 4.dp, top = 4.dp)
                     )
@@ -444,51 +471,83 @@ fun SimCoverScreen(
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = CoverSurface),
+                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(CoverSurfaceBorder)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                     ) {
                         Column(
-                            modifier = Modifier.padding(16.dp),
+                            modifier = Modifier.padding(18.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            TelemetryRow("Carrier Network", if (selectedCarrierTab == 0) "Jazz Pakistan (PMCL)" else "Zong CMPak Ltd")
-                            TelemetryRow("PLMN Code", if (selectedCarrierTab == 0) "410-01" else "410-04")
-                            TelemetryRow("Signal Quality", "-89 dBm (Excellent, 4G+)")
-                            TelemetryRow("LTE Frequency", "Band 3 (1800 MHz FDD)")
-                            TelemetryRow("VoLTE Calling", "Enabled (AMR-WB Audio)")
-                            TelemetryRow("SIM Hardware State", "Card Provisioned & Ready")
+                            CarrierTelemetryRow("Carrier Network", if (selectedCarrierTab == 0) "Jazz Pakistan (PMCL)" else "Zong CMPak Ltd")
+                            CarrierTelemetryRow("PLMN Code", if (selectedCarrierTab == 0) "410-01" else "410-04")
+                            CarrierTelemetryRow("Signal Quality", "-89 dBm (Excellent, 4G+)")
+                            CarrierTelemetryRow("LTE Frequency", "Band 3 (1800 MHz FDD)")
+                            CarrierTelemetryRow("VoLTE Calling", "Enabled (AMR-WB Audio)")
+                            CarrierTelemetryRow("SIM Hardware State", "Card Provisioned & Ready")
                         }
                     }
                 }
 
-                item { Spacer(modifier = Modifier.height(20.dp)) }
+                item { Spacer(modifier = Modifier.height(24.dp)) }
             }
         }
     }
 
-    // USSD Response Modal (Authentic carrier popup)
-    if (showUssdDialog) {
+    // Generic About Dialog
+    if (showAboutDialog) {
         AlertDialog(
-            onDismissRequest = { showUssdDialog = false },
-            title = { Text(ussdTitle, color = TextWhite, fontWeight = FontWeight.Bold) },
-            text = { Text(ussdMessage, color = TextMuted, fontSize = 14.sp) },
+            onDismissRequest = { showAboutDialog = false },
+            title = { Text("SIM Services Manager", color = CoverTextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    text = "A dual-SIM utility providing convenient shortcuts to carrier customer care helplines, balance queries, and hardware USIM status.\n\nVersion 1.0",
+                    color = CoverTextSecondary,
+                    fontSize = 14.sp
+                )
+            },
             confirmButton = {
-                TextButton(onClick = { showUssdDialog = false }) {
-                    Text("OK", color = activeCarrierColor, fontWeight = FontWeight.Bold)
+                TextButton(onClick = { showAboutDialog = false }) {
+                    Text("OK", color = CoverAccentBlue, fontWeight = FontWeight.SemiBold)
                 }
             },
-            containerColor = SurfaceCard
+            containerColor = CoverSurface
         )
     }
 
-    // PIN Keypad Dialog (Manual PIN fallback)
+    // Generic Help Dialog
+    if (showHelpDialog) {
+        AlertDialog(
+            onDismissRequest = { showHelpDialog = false },
+            title = { Text("SIM Services Help", color = CoverTextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    text = "Select your SIM card tab to view active bundle info or trigger balance checks. Calls will open pre-filled in your phone's dialer.",
+                    color = CoverTextSecondary,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showHelpDialog = false }) {
+                    Text("OK", color = CoverAccentBlue, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            containerColor = CoverSurface
+        )
+    }
+
+    // PIN Keypad Dialog (Intercepts upon trigger)
     if (showPinDialog) {
         PinKeypadDialog(
             securityManager = securityManager,
             onSuccess = {
                 showPinDialog = false
-                showPostAuthSheet = true
+                if (securityManager.goStraightToVault) {
+                    viewModel.unlockVault()
+                } else {
+                    showPostAuthSheet = true
+                }
             },
             onDismiss = { showPinDialog = false },
             onTriggerBiometric = {
@@ -496,10 +555,14 @@ fun SimCoverScreen(
                 if (activity != null) {
                     BiometricHelper.showBiometricPrompt(
                         activity = activity,
-                        title = "$activeCarrierName Security Verification",
+                        title = "Security Verification",
                         onSuccess = {
                             showPinDialog = false
-                            showPostAuthSheet = true
+                            if (securityManager.goStraightToVault) {
+                                viewModel.unlockVault()
+                            } else {
+                                showPostAuthSheet = true
+                            }
                         },
                         onError = { /* fallback */ },
                         onFallbackToPin = { /* fallback */ }
@@ -509,26 +572,30 @@ fun SimCoverScreen(
         )
     }
 
-    // PIN Setup Dialog
+    // PIN Setup Dialog (Initial Launch Setup)
     if (showPinSetupDialog) {
         PinSetupDialog(
             securityManager = securityManager,
             onPinCreated = {
                 showPinSetupDialog = false
-                Toast.makeText(context, "Security PIN Initialized", Toast.LENGTH_SHORT).show()
-                showPostAuthSheet = true
+                Toast.makeText(context, "Security PIN Created", Toast.LENGTH_SHORT).show()
+                if (securityManager.goStraightToVault) {
+                    viewModel.unlockVault()
+                } else {
+                    showPostAuthSheet = true
+                }
             },
             onDismiss = { showPinSetupDialog = false }
         )
     }
 
-    // Post-Auth Action Sheet (The Secret Gateway)
+    // Post-Auth Hub (Spec 8.2)
     if (showPostAuthSheet) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             onDismissRequest = { showPostAuthSheet = false },
             sheetState = sheetState,
-            containerColor = SurfaceElevated
+            containerColor = CoverSurface
         ) {
             Column(
                 modifier = Modifier
@@ -539,37 +606,37 @@ fun SimCoverScreen(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(56.dp)
+                        .size(54.dp)
                         .clip(CircleShape)
-                        .background(VaultEmerald.copy(alpha = 0.15f)),
+                        .background(CoverAccentBlue.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
-                        contentDescription = "Authenticated",
-                        tint = VaultEmerald,
-                        modifier = Modifier.size(32.dp)
+                        contentDescription = "Verified",
+                        tint = CoverAccentBlue,
+                        modifier = Modifier.size(30.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
                     text = "$activeCarrierName Security Hub",
-                    fontSize = 20.sp,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TextWhite
+                    color = CoverTextPrimary
                 )
 
                 Text(
-                    text = "Biometric Verification Succeeded",
+                    text = "Identity Confirmed",
                     fontSize = 13.sp,
-                    color = TextMuted
+                    color = CoverTextSecondary
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // The Secret Action: Open Vault
+                // Core App Gateway: Open Private Safe
                 Button(
                     onClick = {
                         showPostAuthSheet = false
@@ -578,15 +645,16 @@ fun SimCoverScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(VaultAccentBrush)
                         .testTag("open_vault_button"),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = VaultEmerald)
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
                 ) {
-                    Icon(imageVector = Icons.Default.LockOpen, contentDescription = null, tint = DarkCarbon)
+                    Icon(imageVector = Icons.Default.LockOpen, contentDescription = null, tint = Color.White)
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Open Private Media Safe",
-                        color = DarkCarbon,
+                        text = "Open Private Safe",
+                        color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp
                     )
@@ -594,30 +662,34 @@ fun SimCoverScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Carrier Action 1: Call Helpline
+                // Action 1: Call Helpline
                 OutlinedButton(
                     onClick = {
-                        val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$activeHelpline"))
-                        context.startActivity(dialIntent)
+                        launchDialer(activeHelpline)
                     },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite)
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CoverTextPrimary)
                 ) {
-                    Icon(imageVector = Icons.Default.Call, contentDescription = null, tint = VaultEmerald)
+                    Icon(imageVector = Icons.Default.Call, contentDescription = null, tint = CoverAccentBlue)
                     Spacer(modifier = Modifier.width(10.dp))
                     Text("Call Helpline ($activeHelpline)", fontWeight = FontWeight.SemiBold)
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Carrier Action 2: Open SIM Toolkit
+                // Action 2: Open SIM Toolkit
                 OutlinedButton(
                     onClick = {
                         val pm = context.packageManager
-                        val stkPackages = listOf("com.android.stk", "com.android.stk2", "com.google.android.stk")
+                        val stkPackages = listOf(
+                            "com.android.stk",
+                            "com.android.stk2",
+                            "com.google.android.stk",
+                            "com.sec.android.app.servicemodeapp"
+                        )
                         var launched = false
                         for (pkg in stkPackages) {
                             val intent = pm.getLaunchIntentForPackage(pkg)
@@ -639,17 +711,17 @@ fun SimCoverScreen(
                         .fillMaxWidth()
                         .height(50.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextWhite)
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CoverTextPrimary)
                 ) {
-                    Icon(imageVector = Icons.Default.PhoneAndroid, contentDescription = null, tint = TextMuted)
+                    Icon(imageVector = Icons.Default.PhoneAndroid, contentDescription = null, tint = CoverTextSecondary)
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text("Launch SIM Toolkit (STK)", fontWeight = FontWeight.SemiBold)
+                    Text("Open SIM Toolkit (STK)", fontWeight = FontWeight.SemiBold)
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 TextButton(onClick = { showPostAuthSheet = false }) {
-                    Text("Lock Session", color = TextMuted)
+                    Text("Close", color = CoverTextSecondary)
                 }
             }
         }
@@ -658,30 +730,42 @@ fun SimCoverScreen(
     if (showStkUnavailableDialog) {
         AlertDialog(
             onDismissRequest = { showStkUnavailableDialog = false },
-            title = { Text("SIM Toolkit Not Installed") },
-            text = { Text("The hardware STK application is not available on this device's ROM. Carrier services can be reached via dialing the helpline.") },
+            title = { Text("SIM Toolkit Not Available", color = CoverTextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "The SIM Toolkit (STK) application is not available on this device's ROM. Carrier services can be reached directly via dialing the helpline.",
+                    color = CoverTextSecondary
+                )
+            },
             confirmButton = {
                 TextButton(onClick = { showStkUnavailableDialog = false }) {
-                    Text("OK", color = VaultEmerald)
+                    Text("OK", color = CoverAccentBlue)
                 }
-            }
+            },
+            containerColor = CoverSurface
         )
     }
 }
 
 @Composable
-fun JazzAccountCard(
-    helpline: String,
+fun CarrierAccountBalanceCard(
+    carrierTitle: String,
+    phoneNumber: String,
+    balance: String,
+    badgeLabel: String,
+    ussdCode: String,
+    accentColor: Color,
     onCheckBalance: () -> Unit,
     onTapSecurity: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("carrier_jazz_card"),
+            .testTag("carrier_account_card"),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
+        colors = CardDefaults.cardColors(containerColor = CoverSurface),
+        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(CoverSurfaceBorder)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(
@@ -694,60 +778,60 @@ fun JazzAccountCard(
                         modifier = Modifier
                             .size(46.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(JazzRubyContainer),
+                            .background(accentColor.copy(alpha = 0.12f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(imageVector = Icons.Default.SimCard, contentDescription = null, tint = JazzRuby, modifier = Modifier.size(24.dp))
+                        Icon(imageVector = Icons.Default.SimCard, contentDescription = null, tint = accentColor, modifier = Modifier.size(24.dp))
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
-                        Text("Jazz Pakistan", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextWhite)
-                        Text("+92 300 8472910 • Prepaid", fontSize = 12.sp, color = TextMuted)
+                        Text(carrierTitle, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = CoverTextPrimary)
+                        Text("$phoneNumber • Prepaid", fontSize = 12.sp, color = CoverTextSecondary)
                     }
                 }
 
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(JazzRuby.copy(alpha = 0.15f))
+                        .background(accentColor.copy(alpha = 0.12f))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text("LTE Ready", fontSize = 11.sp, color = JazzRuby, fontWeight = FontWeight.Bold)
+                    Text(badgeLabel, fontSize = 11.sp, color = accentColor, fontWeight = FontWeight.Bold)
                 }
             }
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            Text("Current Prepaid Balance", fontSize = 12.sp, color = TextMuted)
+            Text("Current Prepaid Balance", fontSize = 12.sp, color = CoverTextSecondary)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
                 Text(
-                    text = "Rs. 248.50",
+                    text = balance,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = TextWhite
+                    color = CoverTextPrimary
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = onCheckBalance,
-                        colors = ButtonDefaults.buttonColors(containerColor = SurfaceBorder),
+                        colors = ButtonDefaults.buttonColors(containerColor = CoverBackground),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Balance (*111#)", fontSize = 12.sp, color = TextWhite)
+                        Text(ussdCode, fontSize = 12.sp, color = CoverTextPrimary, fontWeight = FontWeight.Medium)
                     }
 
                     Button(
                         onClick = onTapSecurity,
-                        colors = ButtonDefaults.buttonColors(containerColor = JazzRuby),
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = TextWhite, modifier = Modifier.size(16.dp))
+                        Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Security", fontSize = 12.sp, color = TextWhite, fontWeight = FontWeight.Bold)
+                        Text("Security", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -756,100 +840,14 @@ fun JazzAccountCard(
 }
 
 @Composable
-fun ZongAccountCard(
-    helpline: String,
-    onCheckBalance: () -> Unit,
-    onTapSecurity: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("carrier_zong_card"),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(ZongAmberContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(imageVector = Icons.Default.SimCard, contentDescription = null, tint = ZongAmber, modifier = Modifier.size(24.dp))
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text("Zong 4G Pakistan", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextWhite)
-                        Text("+92 312 9182743 • Prepaid", fontSize = 12.sp, color = TextMuted)
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(ZongAmber.copy(alpha = 0.15f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text("Super 4G", fontSize = 11.sp, color = ZongAmber, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            Text("Current Prepaid Balance", fontSize = 12.sp, color = TextMuted)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Text(
-                    text = "Rs. 412.18",
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TextWhite
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = onCheckBalance,
-                        colors = ButtonDefaults.buttonColors(containerColor = SurfaceBorder),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("Balance (*222#)", fontSize = 12.sp, color = TextWhite)
-                    }
-
-                    Button(
-                        onClick = onTapSecurity,
-                        colors = ButtonDefaults.buttonColors(containerColor = ZongAmber),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = DarkCarbon, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Security", fontSize = 12.sp, color = DarkCarbon, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun UsageMeterRow(label: String, detail: String, fraction: Float, barColor: Color) {
+fun CarrierUsageMeterRow(label: String, detail: String, fraction: Float, barColor: Color) {
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(text = label, fontSize = 13.sp, color = TextMuted)
-            Text(text = detail, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextWhite)
+            Text(text = label, fontSize = 13.sp, color = CoverTextSecondary)
+            Text(text = detail, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = CoverTextPrimary)
         }
         Spacer(modifier = Modifier.height(6.dp))
         LinearProgressIndicator(
@@ -859,26 +857,26 @@ fun UsageMeterRow(label: String, detail: String, fraction: Float, barColor: Colo
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp)),
             color = barColor,
-            trackColor = DarkCarbon
+            trackColor = CoverBackground
         )
     }
 }
 
 @Composable
-fun QuickActionTile(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+fun CarrierActionTile(
+    icon: ImageVector,
     title: String,
     subtitle: String,
-    accentColor: Color = VaultEmerald,
+    accentColor: Color,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Card(
-        modifier = modifier
-            .clickable(onClick = onClick),
+        modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
+        colors = CardDefaults.cardColors(containerColor = CoverSurface),
+        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(CoverSurfaceBorder)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(
             modifier = Modifier
@@ -889,26 +887,26 @@ fun QuickActionTile(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(accentColor.copy(alpha = 0.15f)),
+                    .background(accentColor.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(imageVector = icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(20.dp))
             }
             Spacer(modifier = Modifier.height(10.dp))
-            Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextWhite)
-            Text(text = subtitle, fontSize = 12.sp, color = TextMuted)
+            Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = CoverTextPrimary)
+            Text(text = subtitle, fontSize = 12.sp, color = CoverTextSecondary)
         }
     }
 }
 
 @Composable
-fun TelemetryRow(label: String, value: String) {
+fun CarrierTelemetryRow(label: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = label, fontSize = 13.sp, color = TextMuted)
-        Text(text = value, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+        Text(text = label, fontSize = 13.sp, color = CoverTextSecondary)
+        Text(text = value, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = CoverTextPrimary)
     }
 }

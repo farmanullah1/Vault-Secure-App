@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,7 +24,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,9 +59,16 @@ fun PinKeypadDialog(
     onDismiss: () -> Unit,
     onTriggerBiometric: (() -> Unit)? = null
 ) {
+    val view = LocalView.current
     var pin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var lockoutMs by remember { mutableLongStateOf(securityManager.getLockoutRemainingMs()) }
+
+    fun performHaptic() {
+        if (securityManager.isHapticEnabled) {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        }
+    }
 
     // Lockout countdown timer
     LaunchedEffect(lockoutMs) {
@@ -72,6 +80,19 @@ fun PinKeypadDialog(
             errorMessage = null
         }
     }
+
+    // Numbers arrangement (shuffled if enabled)
+    val numberKeys = remember(securityManager.isShuffleKeypadEnabled) {
+        val base = (1..9).map { it.toString() }
+        if (securityManager.isShuffleKeypadEnabled) base.shuffled() else base
+    }
+
+    val keys = listOf(
+        listOf(numberKeys[0], numberKeys[1], numberKeys[2]),
+        listOf(numberKeys[3], numberKeys[4], numberKeys[5]),
+        listOf(numberKeys[6], numberKeys[7], numberKeys[8]),
+        listOf("bio", "0", "del")
+    )
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -160,12 +181,6 @@ fun PinKeypadDialog(
 
                 // Numeric Keypad
                 val isLockedOut = lockoutMs > 0
-                val keys = listOf(
-                    listOf("1", "2", "3"),
-                    listOf("4", "5", "6"),
-                    listOf("7", "8", "9"),
-                    listOf("bio", "0", "del")
-                )
 
                 Column(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -181,7 +196,10 @@ fun PinKeypadDialog(
                                     "bio" -> {
                                         if (onTriggerBiometric != null && securityManager.isBiometricEnabled) {
                                             IconButton(
-                                                onClick = onTriggerBiometric,
+                                                onClick = {
+                                                    performHaptic()
+                                                    onTriggerBiometric()
+                                                },
                                                 enabled = !isLockedOut,
                                                 modifier = Modifier
                                                     .size(64.dp)
@@ -201,6 +219,7 @@ fun PinKeypadDialog(
                                     "del" -> {
                                         IconButton(
                                             onClick = {
+                                                performHaptic()
                                                 if (pin.isNotEmpty()) {
                                                     pin = pin.dropLast(1)
                                                     errorMessage = null
@@ -226,17 +245,18 @@ fun PinKeypadDialog(
                                                 .clip(CircleShape)
                                                 .background(DarkCarbon)
                                                 .clickable(enabled = !isLockedOut && pin.length < 6) {
+                                                    performHaptic()
                                                     pin += key
                                                     errorMessage = null
                                                     if (pin.length >= 4) {
-                                                        // Check if verified
                                                         when (val result = securityManager.verifyPin(pin)) {
-                                                            is PinSecurityManager.VerificationResult.Success -> {
+                                                            is PinSecurityManager.VerificationResult.Success,
+                                                            is PinSecurityManager.VerificationResult.DecoySuccess -> {
                                                                 onSuccess()
                                                             }
                                                             is PinSecurityManager.VerificationResult.Failed -> {
                                                                 if (pin.length == 6) {
-                                                                    errorMessage = "Incorrect PIN (${result.attemptsRemainingBeforeLockout} tries left)"
+                                                                    errorMessage = "Incorrect PIN (${result.attemptsRemainingBeforeLockout} attempts remaining)"
                                                                     pin = ""
                                                                 }
                                                             }
