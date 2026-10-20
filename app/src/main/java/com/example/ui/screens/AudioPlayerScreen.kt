@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.widget.Toast
@@ -150,6 +155,23 @@ fun AudioPlayerScreen(
 
     // Initialize ExoPlayer for currentItem
     DisposableEffect(currentItem.uriString) {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        val noisyReceiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                    exoPlayer?.pause()
+                    isPlaying = false
+                    try {
+                        audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+                    } catch (e: Exception) {
+                        // Volume fallback
+                    }
+                }
+            }
+        }
+        val noisyFilter = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+        context.registerReceiver(noisyReceiver, noisyFilter)
+
         val player = ExoPlayer.Builder(context).build().apply {
             val mediaItem = MediaItem.fromUri(Uri.parse(currentItem.uriString))
             setMediaItem(mediaItem)
@@ -179,6 +201,11 @@ fun AudioPlayerScreen(
         exoPlayer = player
 
         onDispose {
+            try {
+                context.unregisterReceiver(noisyReceiver)
+            } catch (e: Exception) {
+                // Ignore if not registered
+            }
             player.release()
             exoPlayer = null
         }

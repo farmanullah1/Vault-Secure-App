@@ -1347,9 +1347,9 @@ fun PhotoGridItem(
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
             .border(
-                width = if (isSelected) 3.dp else 0.dp,
-                color = if (isSelected) VaultEmerald else Color.Transparent,
-                shape = RoundedCornerShape(10.dp)
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) VaultEmerald else SurfaceBorder,
+                shape = RoundedCornerShape(12.dp)
             )
             .testTag("photo_item_${item.id}"),
         shape = RoundedCornerShape(10.dp),
@@ -1414,9 +1414,9 @@ fun VideoGridItem(
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
             .border(
-                width = if (isSelected) 3.dp else 0.dp,
-                color = if (isSelected) VaultEmerald else Color.Transparent,
-                shape = RoundedCornerShape(12.dp)
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) VaultEmerald else SurfaceBorder,
+                shape = RoundedCornerShape(14.dp)
             )
             .testTag("video_item_${item.id}"),
         shape = RoundedCornerShape(12.dp),
@@ -1520,9 +1520,9 @@ fun AudioListItem(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .border(
-                width = if (isSelected) 2.dp else 0.dp,
-                color = if (isSelected) VaultEmerald else Color.Transparent,
-                shape = RoundedCornerShape(14.dp)
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) VaultEmerald else SurfaceBorder,
+                shape = RoundedCornerShape(16.dp)
             )
             .testTag("audio_item_${item.id}"),
         shape = RoundedCornerShape(14.dp),

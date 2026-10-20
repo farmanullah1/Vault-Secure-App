@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
+import android.content.BroadcastReceiver
 import android.media.AudioManager
 import android.net.Uri
 import android.os.BatteryManager
@@ -308,6 +309,32 @@ fun VideoPlayerScreen(
 
     // Initialize ExoPlayer
     DisposableEffect(currentItem.uriString) {
+        val noisyReceiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    AudioManager.ACTION_AUDIO_BECOMING_NOISY -> {
+                        exoPlayer?.pause()
+                        isPlaying = false
+                        try {
+                            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+                        } catch (e: Exception) {
+                            // Volume fallback
+                        }
+                    }
+                    Intent.ACTION_SCREEN_OFF -> {
+                        // When phone screen locks, pause video playback immediately for privacy
+                        exoPlayer?.pause()
+                        isPlaying = false
+                    }
+                }
+            }
+        }
+        val noisyFilter = IntentFilter().apply {
+            addAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+            addAction(Intent.ACTION_SCREEN_OFF)
+        }
+        context.registerReceiver(noisyReceiver, noisyFilter)
+
         val player = ExoPlayer.Builder(context).build().apply {
             val mediaItem = MediaItem.fromUri(Uri.parse(currentItem.uriString))
             setMediaItem(mediaItem)
@@ -343,6 +370,11 @@ fun VideoPlayerScreen(
         exoPlayer = player
 
         onDispose {
+            try {
+                context.unregisterReceiver(noisyReceiver)
+            } catch (e: Exception) {
+                // Ignore if not registered
+            }
             onSavePlaybackPosition?.invoke(currentItem.id, currentPosition)
             if (!playInBackground) {
                 player.release()
