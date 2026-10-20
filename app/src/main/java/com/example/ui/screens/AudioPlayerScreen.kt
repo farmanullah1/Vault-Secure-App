@@ -124,6 +124,7 @@ fun AudioPlayerScreen(
     var embeddedArtBytes by remember { mutableStateOf<ByteArray?>(null) }
     var sleepTimerMinutes by remember { mutableIntStateOf(0) }
     var showSleepTimerDialog by remember { mutableStateOf(false) }
+    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
 
     // Load Embedded Artwork & Metadata via MediaMetadataRetriever
     LaunchedEffect(currentItem.uriString) {
@@ -458,6 +459,7 @@ fun AudioPlayerScreen(
                     onClick = {
                         isLooping = !isLooping
                         exoPlayer?.repeatMode = if (isLooping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+            exoPlayer?.setPlaybackSpeed(playbackSpeed)
                     }
                 ) {
                     Icon(
@@ -468,7 +470,45 @@ fun AudioPlayerScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Playback Speed Selector Pills
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val speedOptions = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+                speedOptions.forEach { speed ->
+                    val isSelected = playbackSpeed == speed
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .clickable {
+                                playbackSpeed = speed
+                                exoPlayer?.setPlaybackSpeed(speed)
+                            },
+                        color = if (isSelected) VaultEmerald else SurfaceCard,
+                        shape = RoundedCornerShape(20.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = 1.dp,
+                            color = if (isSelected) VaultEmerald else SurfaceElevated
+                        )
+                    ) {
+                        Text(
+                            text = if (speed == 1.0f) "1.0x" else "${speed}x",
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) DarkCarbon else TextMuted,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 

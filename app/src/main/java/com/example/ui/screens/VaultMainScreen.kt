@@ -1637,10 +1637,30 @@ fun DocNoteListItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val isNote = item.mediaType == MediaType.NOTE.name
+    val isMarkdown = item.fileName.endsWith(".md", ignoreCase = true)
+    val isPdf = item.fileName.endsWith(".pdf", ignoreCase = true)
+    val isText = item.fileName.endsWith(".txt", ignoreCase = true)
+
+    val badgeColor = when {
+        isNote -> Color(0xFFF59E0B) // Amber
+        isMarkdown -> Color(0xFF38BDF8) // Sky
+        isPdf -> Color(0xFFEF4444) // Coral Red
+        else -> VaultEmerald
+    }
+
+    val typeLabel = when {
+        isNote -> "NOTE"
+        isMarkdown -> "MD"
+        isPdf -> "PDF"
+        isText -> "TXT"
+        else -> "DOC"
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
@@ -1648,10 +1668,10 @@ fun DocNoteListItem(
             .border(
                 width = if (isSelected) 2.dp else 1.dp,
                 color = if (isSelected) VaultEmerald else SurfaceBorder,
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(16.dp)
             )
             .testTag("doc_note_item_${item.id}"),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceCard)
     ) {
         Row(
@@ -1672,21 +1692,34 @@ fun DocNoteListItem(
                         Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = DarkCarbon, modifier = Modifier.size(16.dp))
                     }
                 }
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(12.dp))
             } else {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(48.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(VaultEmerald.copy(alpha = 0.15f)),
+                        .background(badgeColor.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = if (item.mediaType == MediaType.NOTE.name) Icons.Default.Edit else Icons.Default.Description,
-                        contentDescription = null,
-                        tint = VaultEmerald,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isNote) Icons.Default.Edit else Icons.Default.Description,
+                            contentDescription = null,
+                            tint = badgeColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = typeLabel,
+                            color = badgeColor,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(14.dp))
             }
@@ -1695,30 +1728,63 @@ fun DocNoteListItem(
                 Text(
                     text = item.fileName,
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     color = TextWhite,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (item.mediaType == MediaType.NOTE.name && item.noteContent.isNotBlank()) {
+                Spacer(modifier = Modifier.height(3.dp))
+                if (isNote && item.noteContent.isNotBlank()) {
                     Text(
-                        text = item.noteContent,
+                        text = item.noteContent.trim().replace(Regex("\\s+"), " "),
                         fontSize = 12.sp,
                         color = TextMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val wordCount = item.noteContent.trim().split(Regex("\\s+")).count { it.isNotEmpty() }
+                        Text(
+                            text = "$wordCount word(s)",
+                            fontSize = 11.sp,
+                            color = badgeColor,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = " • ",
+                            fontSize = 11.sp,
+                            color = TextDim
+                        )
+                        Text(
+                            text = item.folderName,
+                            fontSize = 11.sp,
+                            color = TextDim
+                        )
+                    }
                 } else {
-                    val sizeKb = item.fileSizeBytes / 1024
-                    Text(
-                        text = if (sizeKb > 0) "$sizeKb KB • ${item.folderName}" else item.folderName,
-                        fontSize = 12.sp,
-                        color = TextDim
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = formatFileSize(item.fileSizeBytes),
+                            fontSize = 11.sp,
+                            color = TextMuted
+                        )
+                        Text(
+                            text = " • ",
+                            fontSize = 11.sp,
+                            color = TextDim
+                        )
+                        Text(
+                            text = item.folderName,
+                            fontSize = 11.sp,
+                            color = TextDim
+                        )
+                    }
                 }
             }
 
             if (item.isFavorite) {
+                Spacer(modifier = Modifier.width(8.dp))
                 Icon(
                     imageVector = Icons.Default.Favorite,
                     contentDescription = "Favorite",
