@@ -24,7 +24,7 @@ A native **Android** app that:
 
 - Keeps the user's **photos, videos and audio** on the **SD card** (the phone's internal storage is full).
 - **Hides them from the phone's gallery ecosystem** (Google Photos, Gallery, Instagram/WhatsApp/Facebook pickers, Chrome/browser pickers) while keeping them reachable from **this app** and from a **file manager** if the user navigates to the folder.
-- Opens behind a **disguised cover screen** that looks like a normal SIM/carrier utility, with two cards: **Jazz** and **Zong**.
+- Opens behind a **disguised cover screen** that looks like a normal SIM/carrier utility, titled **"SIM Service"**, with two list rows: **Jazz** and **Zong**.
 - Tapping a card requires **fingerprint or PIN/password**. After success the user reaches a **post-auth panel** (carrier actions + Open Vault), then the vault.
 - Inside the vault: three sections — **Photos**, **Videos**, **Audio** — each with a premium, polished viewer/player.
 - Is **beautiful, fast and smooth**: this is a hard requirement, not a nice-to-have.
@@ -145,7 +145,7 @@ Other manifest items:
 - `android:allowBackup="false"` and data-extraction rules excluding everything (so PIN data isn't backed up).
 - Disable activity transition leaks in recents (`FLAG_SECURE`, Section 9).
 - A `FileProvider` is **not** needed if content URIs from SAF are shared directly with temporary grants.
-- Launcher: one activity alias for the cover screen. Optional **alternate launcher aliases** (Section 10.6) to let the user choose a plain "SIM Services" or "Utilities" icon/name.
+- Launcher: one activity alias for the cover screen. Optional **alternate launcher aliases** (Section 10.6) to let the user choose the default "SIM Service" icon/name or a plain "Utilities" one. The launcher icon is specified in Section 10.7.
 
 ---
 
@@ -154,11 +154,11 @@ Other manifest items:
 ### 7.1 Visual identity
 Two **distinct personalities** inside one app:
 
-1. **Cover / SIM section — "Normal but very good":** looks like a clean, trustworthy telecom utility. Calm, light-leaning, familiar. Nothing about it should look like a vault.
+1. **Cover / "SIM Service" screen — "Normal but very good":** a minimalist, high-contrast, **pure-black** system-utility look: a slim top bar with a back arrow and the bold title "SIM Service", two simple list rows, and an empty black screen below. It looks like an ordinary SIM menu, not a vault. Exact layout in Section 8.1.
 2. **Vault — "Premium & private":** deep, cinematic, dark. Feels like a high-end media app (think Apple Photos meets a pro video player).
 
 ### 7.2 Color
-- **Cover (light default):** background `#F6F8FB`, surface `#FFFFFF`, primary text `#0F172A`, secondary `#64748B`, accent neutral blue `#2563EB`. Cards use two **generic, own-designed** accent gradients (e.g. warm red-orange and cool teal) — **not** carrier brand colors or logos.
+- **Cover / SIM Service (always dark, ignores system theme):** screen, status bar and navigation bar all `#000000`; primary text and icons `#FFFFFF`; chevrons `#C7C7CC` (light gray); pressed-row highlight `#141416`; optional hairline divider `#1C1C1E`. **No accent color, no gradients, no cards, no carrier brand colors or logos.** Contrast of white on black exceeds 20:1; chevron on black exceeds 11:1.
 - **Vault (dark default):** background `#0B0D12`, elevated surface `#14181F`, high surface `#1C2230`, outline `#262E3D`. Primary accent: a refined violet-to-cyan gradient (`#7C5CFF → #22D3EE`) used sparingly for focus, progress and key actions.
 - **AMOLED mode:** true `#000000` background.
 - **Light vault mode:** warm off-white with the same accent.
@@ -207,30 +207,52 @@ Vault Home
   ├─ Files (File Manager, Albums, Favorites, Trash)
   ├─ Storage (Dashboard, Gallery-Visibility Checklist)
   └─ Settings
-First launch only: Onboarding (welcome → set PIN → biometric opt-in → choose storage mode → pick folder → scan)
+First launch only: Onboarding (welcome → set PIN/password → choose auto-lock → "Set up access" permission checklist (Section 9.8: folder access, notifications, biometrics, optional battery) → choose storage mode → pick folder → scan)
 ```
 
-### 8.1 Cover screen (the disguise) — detailed
+### 8.1 Cover screen "SIM Service" (the disguise) — exact layout
+This replaces any earlier cover design. Build it **exactly** like this:
+
 ```
 ┌──────────────────────────────┐
-│  SIM Services          ⋮     │  ← neutral title; no "vault" wording
+│ 12:43              ▂▄▆ 🔋    │  ← system status bar (black, light icons)
+│ ←  SIM Service               │  ← top bar directly below status bar
 │                              │
-│        ┌────────────┐        │
-│        │  ▭ SIM chip │       │  ← own-designed generic SIM card illustration
-│        └────────────┘        │     with soft animated shine (subtle)
-│   Network status (static)    │
 │                              │
-│  ┌──────────┐ ┌──────────┐   │
-│  │  Jazz    │ │  Zong    │   │  ← two equal cards, own gradients, text labels
-│  │  📞 Call │ │  📞 Call │   │
-│  └──────────┘ └──────────┘   │
+│  ▯¹   Jazz               ›   │  ← row 1
 │                              │
-│  Recent: —   Help   Settings │
+│  ▯²   Zong               ›   │  ← row 2 (vertically spaced below row 1)
+│                              │
+│                              │
+│  (rest of the screen:        │
+│   completely black, empty)   │
+│                              │
 └──────────────────────────────┘
 ```
-- Both cards trigger authentication **before any action**.
-- A discreet **long-press on the SIM illustration** may be offered as an *optional* alternate unlock (off by default) — but standard flow must always work.
-- "⋮" menu contains only generic items (About, Help). Settings are reachable **only after auth** (so a bystander can't discover the vault).
+
+**Top navigation bar** (sits immediately below the status bar, edge-to-edge, `#000000`, no elevation, no divider):
+- Height 56 dp (plus the status-bar inset). Horizontal padding 4 dp for the back button, 8 dp before the title.
+- **Left-pointing back arrow** (24 dp, white, Material "arrow_back" outlined/rounded, 48 dp touch target, ripple bounded/circular).
+- **Title "SIM Service"** directly after the arrow: **bold** (700), clean sans-serif (Inter or system sans), 20 sp, white, single line, left-aligned, **not** centered. The title is a string resource (`sim_service_title`); do not call it "Vault", "Private" or "Safe".
+- **Back arrow behavior:** closes the screen (finishes the activity), returning to the home screen or the previous app. It never requires authentication and never navigates elsewhere in the app.
+
+**Menu list (upper-middle of the screen):**
+- Two rows, stacked vertically with clear spacing (row height 64 dp, 12 dp gap between rows, 20 dp horizontal padding). The first row's top edge sits at roughly **20–25 % of the screen height** (below the top bar), so the list reads as "upper-middle".
+- **Row 1:** tiny SIM-card icon (about 20 × 24 dp, white outline, own vector drawable) with the numeral **"1"** in its **bottom-right corner** (bold, about 9–10 sp, white), then 16 dp gap, then the text **"Jazz"** in white (17 sp, medium weight), and a **light-gray chevron "›"** (`#C7C7CC`, 20 dp, right-pointing) on the **far right** edge.
+- **Row 2:** identical structure with the numeral **"2"** and the text **"Zong"**.
+- Rows are full-width tap targets with a subtle pressed state (`#141416`) and a light haptic tick. No cards, no shadows, no gradients, no borders around rows. Optional hairline divider between rows (`#1C1C1E`) only if it still looks minimal.
+- The carrier names are plain text labels. **No carrier logos or brand colors.**
+
+**Everything below the list:** completely black (`#000000`) and empty. No buttons, no hints, no menu, no "help", no settings, no illustrations, no status text. The bottom (navigation) bar is black as well. This empty area must not contain hidden labels that screen readers announce as "vault".
+
+**Behavior:**
+- Tapping **Jazz** or **Zong** starts authentication (`BiometricPrompt` with PIN fallback, Section 10.5) **before any action**. On success, show the post-auth panel (Section 8.2) for that carrier.
+- Unlocking from either row unlocks the whole app session.
+- The screen uses edge-to-edge drawing: status-bar and navigation-bar icons are light on black; insets are respected so the top bar never overlaps the clock or camera cutout. Works in portrait and landscape (in landscape the list keeps the same left alignment and the empty area stays black).
+- Always dark: the screen ignores the system light/dark theme and the vault's theme setting.
+- Entry animation: a quick (150 ms) fade-in of the two rows with a 4 dp upward settle; reduced to none when "Remove animations" is on.
+- **Optional alternate unlock (off by default):** a 2-second long-press on the title text. The normal tap flow must always work. Nothing visual indicates this gesture.
+- There is **no overflow (⋮) menu, no Help, no Settings and no Recents list** on this screen. Settings are reachable only after authentication so a bystander can't discover anything else in the app.
 
 ### 8.2 Post-auth panel
 A bottom sheet or small page with three large, clear actions:
@@ -272,10 +294,28 @@ Remembers last choice if the user enables "Go straight to Vault after unlock" in
 - After 5 wrong attempts: 30 s, then 1 min, 5 min, 15 min, capped at 15 min. Persist counters across process death. Never permanent lockout.
 - Show a calm countdown, not alarming language.
 
-### 9.4 Session & auto-lock
-- Unlocking via either carrier card unlocks the whole session.
-- Auto-lock on background: Immediate / 30 s / 1 min / 5 min (default: 30 s). Re-lock on screen-off.
-- **Media playback exception:** audio may continue in the background with lock-screen controls, but the **UI** re-locks; notification shows neutral text (hide title option, default on).
+### 9.4 Session & auto-lock (user-selectable)
+- Unlocking via either carrier row unlocks the whole session.
+- **Auto-lock setting** (Settings → Security → Auto-lock), single choice, shown as radio rows with a one-line explanation under each:
+  1. **Immediately:** locks the moment the app leaves the foreground (home, recents, another app, screen off).
+  2. **After 1 minute**
+  3. **After 2 minutes**
+  4. **After 5 minutes**
+  5. **After 30 minutes**
+  6. **Until the app is closed:** after the user enters the password once, they can keep using the app (including leaving and coming back, switching apps, screen off) with **no further prompts until the app is closed**. When the user closes the app and opens it again, the password/fingerprint is required.
+- **Default: After 1 minute.** It is pre-selected in onboarding (with a short explainer) and applied after "Reset app"; the user can change it any time in Settings.
+- **How the timer works:** record `backgroundedAt` using `SystemClock.elapsedRealtime()` (not wall-clock, so changing the phone's clock can't bypass it) when the last activity stops; on return, compare elapsed time with the chosen limit and lock if exceeded. Do not rely on a coroutine timer alone (it dies with the process).
+- **"Until the app is closed" semantics (be exact and honest):**
+  - The unlocked state lives **only in memory** (an `AuthSession` singleton). It is never persisted, so it cannot survive the app being closed.
+  - "Closed" means: the user swipes the app away from Recents, uses the in-app **Exit/Lock & close** button, the system kills the process (low memory), the phone reboots, or the app is force-stopped. Handle `onTaskRemoved` in the service and clear the session.
+  - Because Android may kill background apps at any time, the user can occasionally be asked for the password even though they didn't close the app. Say this in the setting's helper text.
+  - While this mode is active, show a small, persistent **"Lock now"** button in the vault top bar and in the media notification so the user can still lock instantly.
+- **Always-applied rules, whatever the setting:**
+  - Cold start (fresh process) **always** requires authentication.
+  - After a **device reboot**, authentication is always required.
+  - After **N failed attempts**, lockout applies (Section 9.3).
+  - Changing the PIN/password, resetting, or changing security settings requires re-authentication even if the session is unlocked ("sensitive action re-auth", valid for 2 minutes).
+- **Media playback exception (configurable):** audio may continue in the background with lock-screen controls while the **UI** is locked; the notification shows neutral text (hide-title option, default on). A toggle **"Stop playback when the app locks"** (default off) lets the user choose. A second toggle **"Don't auto-lock while a video is playing in the foreground"** (default on) prevents locking mid-movie.
 
 ### 9.5 Screen privacy
 - `FLAG_SECURE` **on by default** (blocks screenshots, hides content in recents) with a Settings toggle.
@@ -291,14 +331,79 @@ Offer **"Reset app"**: clears the app's database, settings and credentials **onl
 - **Panic gesture:** quick double-shake or a fast back-press sequence returns to the cover screen and locks.
 - **Disguise icon/name** choices (Section 10.6).
 
+### 9.8 First-launch permission setup ("ask for everything the app needs, once, properly")
+On the **first launch**, right after the PIN is created, show a dedicated **"Set up access"** step (a friendly checklist, not a wall of system dialogs). Each item has an icon, a one-line reason, a status chip (Needed / Granted / Skipped) and a button. The user can continue with items skipped, and every item can be fixed later from **Settings → Permissions**.
+
+| Item | Why the app needs it | How it's requested | Required? |
+|---|---|---|---|
+| **Folder access (SD card)** | Read, play and manage your media in the chosen folder | SAF folder picker (`ACTION_OPEN_DOCUMENT_TREE`), then `takePersistableUriPermission`. Guide the user to pick the `new` folder or the vault folder (Android 11+ doesn't allow the SD card root). Show a short illustrated how-to. | **Yes**, the app cannot work without it |
+| **Notifications** (Android 13+) | Import/scan progress and audio playback controls | `POST_NOTIFICATIONS` runtime request after a short rationale screen | Strongly recommended; app works without it, but playback/import progress won't show |
+| **Fingerprint / face unlock** | Faster unlocking | Check `BiometricManager.canAuthenticate`; if not enrolled, offer a shortcut to system security settings (`ACTION_BIOMETRIC_ENROLL` on API 30+) | Optional |
+| **Battery optimization exemption** | Keeps long imports and background audio from being killed | Explain, then open the system battery-optimization screen (use `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` **only** if the platform policy allows for this app type; otherwise just open the settings screen and explain) | Optional, off by default |
+| **Display over other apps / full-screen** | **Not requested.** | n/a | No |
+
+Rules:
+- **Request only what the app truly uses.** Do not request storage, phone, SMS, contacts, location, camera, microphone or all-files access. State this on the screen: "Private Vault never asks for internet, contacts or location."
+- Show the rationale **before** the system dialog. If the user denies, show what stops working and a button to retry; if "Don't ask again" was triggered, deep-link to the app's system settings page.
+- Handle permission revocation at any time (e.g. folder permission lost after SD card change): show a gentle "Access needed" screen with the fix, never a crash.
+- A **Permissions status card** in Settings shows live state for each item (Granted / Not granted) with one-tap fix.
+- Re-run the checklist automatically after an app update that adds a new permission.
+
+### 9.9 More options (Settings → Security & Behavior)
+Group into clear sections; each option has a title, a one-line description and a safe default.
+
+**Locking & unlocking**
+- Auto-lock timing (Section 9.4).
+- **Lock when screen turns off** (default on; forced on unless "Until app is closed" is chosen, where it's a toggle, default off).
+- **Lock now** shortcut: button in the vault top bar, in the notification, and as an optional **Quick Settings tile**.
+- **Lock on shake** (optional, adjustable sensitivity, default off).
+- **Lock on volume-button combo or power-button double press** is **not** included (not reliably possible; do not promise).
+- **Fingerprint-only for quick unlock, PIN every N unlocks:** require the PIN again after every 5/10/20 biometric unlocks (default 10) or after 72 hours.
+- **Require PIN instead of biometrics** (turn biometrics off).
+- **Require password after reboot** (always on, shown as info).
+- **Re-authenticate to open Settings** (default on).
+- **Re-authenticate to delete permanently / empty trash / export** (default on).
+
+**Keypad & input**
+- Shuffle keypad digits (default off), hide PIN dots (show only a pulse), haptic feedback, vibration on wrong PIN, large-keypad mode for accessibility.
+- Password strength meter and rule hints when creating/changing the password; block trivial PINs (0000, 1234, repeated digits) with a warning (user may override).
+- **PIN length** 4–8 or alphanumeric password; switch type from Settings.
+
+**Privacy**
+- Screenshot/recording protection (`FLAG_SECURE`, default on).
+- Hide app content in Recents (default on).
+- Hide notification content on lock screen (default on).
+- Hide media names in notifications and in "Continue watching" on the home screen (default off).
+- **Blur thumbnails until tapped** ("Privacy blur" for grids, default off).
+- **Hide section counts** on the home screen (default off).
+- **Clear thumbnail cache on lock** (default off; trades speed for privacy).
+- **Clear recent searches and "recently played" on lock** (default off).
+- Disguise launcher name/icon (Section 10.6).
+- Return to the cover screen (not the vault) when the app is relaunched from Recents.
+
+**Safety nets**
+- **Auto-exit idle timer on the vault** (separate from background auto-lock): lock after X minutes of no touches while the app is in the foreground and nothing is playing (Off / 5 / 10 / 15 minutes, default off).
+- **Intruder log** (time and number of failures only, local, viewable after unlocking).
+- **Failed-attempt alert banner** on next successful unlock: "3 wrong attempts at 14:02" (default on).
+- **Decoy PIN** (Section 9.7).
+- **Reset app** (Section 9.6).
+- **Backup of settings** (without secrets) as a local file, optional.
+
+**Playback & behavior**
+- Resume where you left off (on/off), auto-play next, background audio on/off, keep screen on during video, remember brightness per session, default orientation, default seek step, haptics, gesture toggles.
+- **Pause playback when headphones disconnect** (default on), **pause when another app takes audio focus** (default on).
+- **Confirm before delete** (default on), **trash retention** (7/30/90 days/never), **"Ask where to save" for exports** (default on).
+- **Scan on app open** (default on), **scan only on Wi-Fi** is **not applicable** (no network), **scan hidden sub-folders** (default on).
+- **Data saver for thumbnails** (lower quality thumbnails, default off), **thumbnail cache limit** (256 MB / 512 MB / 1 GB / 2 GB).
+
 ---
 
 ## 10. Cover Screen & Carrier / SIM Flow
 
 ### 10.1 Rules
-- Generic SIM illustration only; **no carrier logos**, no "official" wording.
-- Cards: **Jazz** and **Zong** (text labels and own gradients).
-- Tapping a card → authenticate → post-auth panel. No carrier action and no vault access before success.
+- Tiny own-designed SIM icons only; **no carrier logos**, no "official" wording.
+- Rows: **Jazz** and **Zong**, plain white text labels on black (Section 8.1).
+- Tapping a row → authenticate → post-auth panel. No carrier action and no vault access before success.
 
 ### 10.2 Helpline calling
 - Use `Intent.ACTION_DIAL` with a pre-filled `tel:` URI. **Never auto-call.** No call permission.
@@ -311,16 +416,39 @@ Offer **"Reset app"**: clears the app's database, settings and credentials **onl
 - Handle: no SIM, dual SIM (let the system choose), missing dialer, and OEM-specific names. Make the candidate package list editable in a hidden "Advanced" screen.
 
 ### 10.4 "Looks normal but very good" checklist
-- Clean spacing, readable type, subtle shadows, smooth card press animation (scale 0.97), ripple, and tasteful micro-interactions.
-- Localised strings; works in light/dark.
-- Never any mention of "vault", "hidden", or "private" on this screen.
+- Minimal and modern: high-contrast white-on-black text, tiny simple icons, generous spacing, a 4/8 dp rhythm, and nothing decorative. Restraint is the design.
+- Rows have a soft pressed highlight and haptic tick; no scale/bounce animations on this screen.
+- Localised strings (English now, Urdu-ready); the screen stays dark in every theme and supports font scaling up to 200 % without clipping (rows grow in height, never truncate "Jazz"/"Zong").
+- TalkBack: rows read "Jazz, SIM 1, button" and "Zong, SIM 2, button"; the back arrow reads "Back". No vault wording anywhere.
+- Never any mention of "vault", "hidden", or "private" on this screen, in its accessibility labels, or in the Recents title.
 
 ### 10.5 Auth gate details
 - Biometric prompt title/subtitle should be neutral: e.g. "Confirm it's you" / "Required to continue".
 - If biometrics unavailable → PIN keypad (custom, large touch targets, shuffle-keys option, haptics, dots animation).
 
 ### 10.6 Disguise options (optional)
-- Alternate launcher aliases (e.g. "SIM Services", "Utilities", "Calculator-style" is **not** to be faked as functioning calculator unless fully built). Changing alias may need app restart; explain this.
+- (See also Section 10.7 for the launcher icon.)
+- Alternate launcher aliases (default launcher label **"SIM Service"** with the SIM icon from Section 10.7; optional alternates such as "Utilities", "Calculator-style" is **not** to be faked as functioning calculator unless fully built). Changing alias may need app restart; explain this.
+
+### 10.7 App icon ("SIM Service")
+**Concept:** a modern, minimalist icon that looks like a plain SIM utility. A master vector is provided (`sim_service_icon.svg`; source also in Appendix A). Use it as the visual reference and rebuild it as native Android vectors.
+
+**Composition (1024 × 1024 master):**
+- **Backdrop (presentation/store art only):** dark charcoal `#2E3035 → #1C1D21` diagonal gradient. It is **not** part of the launcher icon the OS draws.
+- **Container:** a smooth, light-gray **squircle** (about 70 % of the canvas, corner radius about 29 % of its width) with a soft top-left-to-bottom-right gradient `#F1F2F4 → #D9DCE1 → #BFC3CA`, a faint 3 px white inner stroke at about 55 % opacity, and a soft, low drop shadow.
+- **SIM card:** centered, **matte black** (`#232427 → #0B0B0D`), portrait, about 45 % of the container's width, rounded corners (about 20 px at 1024), with the characteristic **angled top-right corner notch** (a 45° cut of about 80 px). A very faint inner outline (`#3A3C41` at 60 %) gives depth without gloss.
+- **Chip:** at the exact center of the SIM card, a **metallic gold-and-orange contact pad** (190 × 170 px, 28 px corners) with a diagonal gradient `#FFE08A → #F7B84A → #EE8E2A → #C96A16`, a thin darker amber edge, a top highlight line, a soft sheen band, and **soft sub-divided segment lines** (`#8A4710` at about 60 %): two vertical and two horizontal dividers forming six outer pads around a rounded inner pad.
+
+**Android implementation:**
+- **Adaptive icon** (`mipmap-anydpi-v26/ic_launcher.xml`, plus `ic_launcher_round.xml`):
+  - **Background layer:** the light-gray squircle gradient painted full-bleed (the OS applies its own mask shape).
+  - **Foreground layer:** the black SIM with gold chip as a vector drawable, scaled so all content sits inside the central **66 %** safe zone of the 108 dp canvas.
+  - **Monochrome layer** (Android 13+ themed icons): a single-color silhouette of the SIM outline with the chip segment lines as cut-outs.
+- **Legacy fallback** (API < 26): PNGs at mdpi–xxxhdpi containing the full squircle composition on a transparent background.
+- **Play/sideload listing art:** 512 × 512 PNG exported from the master SVG, with the charcoal backdrop.
+- Verify the icon at 48 dp, 36 dp and 24 dp (notification/small sizes): the notch, chip and squircle must stay recognisable. Do not add text to the icon.
+- The icon must **not** use any carrier logo, color or name. The app label is "SIM Service" (string resource, easy to change).
+- The splash screen reuses the same icon on a black background (`windowSplashScreenBackground = #000000`), with no vault branding.
 
 ---
 
@@ -493,7 +621,8 @@ All destructive actions go through a single, tested `FileOperations` layer using
 
 ## 16. Settings (reachable only after auth)
 
-- **Security:** change PIN/password, biometrics toggle, auto-lock time, FLAG_SECURE, hide notification content, decoy PIN, intruder log, "Go straight to Vault".
+- **Security & Behavior:** change PIN/password, biometrics toggle, **auto-lock (Immediately / 1 min / 2 min / 5 min / 30 min / Until app is closed)**, lock-when-screen-off, Lock now, shake-to-lock, PIN every N biometric unlocks, FLAG_SECURE, hide notification content, privacy blur, decoy PIN, intruder log, "Go straight to Vault" and everything in Section 9.9.
+- **Permissions:** live status and one-tap fix for folder access, notifications, biometrics and battery optimization (Section 9.8).
 - **Storage:** active mode, folder(s), rescan, cache size/clear, trash settings, FAT32/exFAT info.
 - **Playback:** default seek step, gesture toggles, default speed, orientation, subtitle style, background audio, PiP.
 - **Appearance:** theme (System/Light/Dark/AMOLED), accent, dynamic color, grid density, thumbnail shape, language.
@@ -585,8 +714,8 @@ Indexes on `type`, `dateModified`, `displayName`, `isFavorite`, `inTrash`. Use P
 
 ## 24. Acceptance Criteria (must all be true)
 
-1. Cover screen shows a generic SIM illustration with **Jazz** and **Zong** cards and **no vault wording**.
-2. Both cards require biometric/PIN **before** any carrier or vault access.
+1. Cover screen matches Section 8.1 exactly: black screen, back arrow plus bold "SIM Service" title directly below the status bar, **Jazz** (SIM "1") and **Zong** (SIM "2") rows with light-gray right chevrons in the upper-middle, and a completely empty black area below. No vault wording, no extra buttons or menus.
+2. Both rows require biometric/PIN **before** any carrier or vault access; the back arrow closes the app without authentication.
 3. SIM Toolkit launches only when actually installed; otherwise a truthful message appears. No fake menus.
 4. **Index in place** works: the only change on the SD card is the added `.nomedia`.
 5. Copy and Move modes work with progress, cancel, verification and space checks.
@@ -599,6 +728,12 @@ Indexes on `type`, `dateModified`, `displayName`, `isFavorite`, `inTrash`. Use P
 12. `FLAG_SECURE` on by default; auto-lock works; no INTERNET permission.
 13. README includes Android Studio build and sideload instructions; `brain.md` is current.
 14. The UI looks premium: consistent theme, smooth transitions, skeleton loaders, empty/error states on every screen.
+15. Auto-lock offers exactly: Immediately, 1 minute, 2 minutes, 5 minutes, 30 minutes, and "Until the app is closed"; the choice persists and is changeable in Settings.
+16. In "Until the app is closed" mode the user is not prompted again while the app stays open (including after backgrounding and screen-off), but **is** prompted after swiping the app from Recents, an in-app Exit, process death or reboot.
+17. Timers use `elapsedRealtime`; changing the phone's clock cannot bypass the lock.
+18. First launch shows the "Set up access" checklist with a rationale before each system dialog, requests only the permissions in Section 9.8, handles denial and "Don't ask again", and the Settings → Permissions screen reflects live state.
+19. Sensitive actions (change PIN, reset, permanent delete, export) re-authenticate even when the session is unlocked.
+20. The Section 9.9 options exist with the stated defaults, and each toggle actually changes behavior (or is omitted and listed in `brain.md` as not built, never shown as a dead switch).
 
 ---
 
@@ -671,3 +806,129 @@ Indexes on `type`, `dateModified`, `displayName`, `isFavorite`, `inTrash`. Use P
 4. Confirm: Entry flow Option A, Storage mode Index-in-place (defaults in Section 2).
 5. Preferred app name and launcher disguise name.
 6. Verified helpline numbers for Jazz and Zong (or leave blank).
+
+---
+
+## 31. Enhancements Pack (design polish + extra features)
+
+Everything here is **in addition** to the sections above. If a feature cannot be made to work properly, omit it and list it under "Not built" in `brain.md`; never ship a dead button.
+
+### 31.1 Design refinements (whole app)
+- **Design tokens:** colors, type, spacing (4/8 dp), radii, elevation and motion defined once in `ui/theme/` and used everywhere. No hard-coded colors in screens.
+- **Two themes, one family:** the cover screen is pure black and minimal (Section 8.1). The vault is deep dark with a violet-to-cyan accent. The transition between them (after authentication) is a short cross-fade through black so it feels intentional.
+- **Edge-to-edge** everywhere, with correct insets, cutout handling, **predictive back** gesture support and consistent back behavior.
+- **Collapsing large-title top bars** on Photos, Videos, Audio and Files; sticky filter chips under them.
+- **Floating glass bottom bar** (Home, Library, Files, Settings) with a subtle blur on Android 12+ and a solid fallback; hides while scrolling down, returns on scroll up; hidden in the players.
+- **Hero header on Vault Home:** a storage ring (used/free on the SD card), counts per type, and a "Continue" carousel. A subtle animated gradient behind the ring (respecting reduced motion).
+- **Selection polish:** animated check badges, scale-in thumbnails, a bottom action bar that slides up with batch actions; a drag handle for range-select.
+- **Thumbnails:** blur-up placeholders (dominant color first, then image), duration pill on videos, resume progress line, a small badge for favorites/format (GIF, RAW, HDR, 4K).
+- **Empty states with purpose:** in-house line illustrations and one clear action ("Pick folder", "Import files", "Rescan").
+- **Haptics and sounds:** light haptics for selection/lock/unlock; no sound effects.
+- **Adaptive layouts:** window size classes (compact/medium/expanded): two-pane on tablets and foldables (grid + details), navigation rail on wide screens, landscape-optimised players.
+- **Consistent micro-interactions:** pull-to-refresh to rescan, swipe actions on list rows (favorite, trash), long-press preview peek on thumbnails.
+- **Post-auth panel styling:** a black bottom sheet (`#101012`, 28 dp top corners) matching the cover screen: three large rows (Call helpline, Open SIM Toolkit, Open Vault) with simple icons; **Open Vault** is the single accented (gradient) action.
+- **Authentication screens** use the same black, high-contrast style as the cover: large keypad, white digits, subtle dot animation, clear but calm error shake.
+
+### 31.2 Library & organisation
+- **Timeline view** for photos and videos: grouped by day/month with a draggable date scrubber and a year jump.
+- **Advanced search syntax:** `type:video`, `size:>100mb`, `dur:>10m`, `tag:family`, `album:trip`, `fav`, `ext:mkv`, with suggestion chips so users never need to type syntax.
+- **Locked albums:** albums that require re-authentication every time they open (separate from the main session), plus an option to hide their counts and thumbnails on the home screen.
+- **Ratings and notes:** 1–5 star rating and a private text note per item (stored in Room only; never written into the file).
+- **Batch rename** with patterns (`Trip_{n}`, `{date}_{name}`) and a live preview.
+- **Smart collections** (Section 13) plus: "Recently played", "Never opened", "Largest 50", "Short clips (< 30 s)", "Screenshots-like images" (by aspect ratio and size, no AI).
+- **Sort/view memory per section** (each of Photos/Videos/Audio remembers its own grid size, sort and filters).
+- **Compare mode:** open two photos side by side with synced zoom/pan.
+
+### 31.3 Photo tools (non-destructive)
+- Crop, rotate, flip and basic adjustments (brightness, contrast, saturation, warmth) with live preview.
+- **"Save as copy" is the default**; "Replace original" requires an explicit confirmation and is blocked on read-only media.
+- Slideshow with **music from the Audio section**, transition choices, interval and shuffle, and a screen-on setting.
+- Copy a photo to the clipboard or share it only after a clear "this leaves the vault" prompt.
+
+### 31.4 Video extras
+- **Audio-only mode** (screen off, keeps playing with notification controls) and "Play audio in background".
+- **Bookmarks and chapters:** tap to add a bookmark at the current time; list bookmarks in the info sheet; jump from the seek bar.
+- **Per-video speed and subtitle-style memory**; global defaults in Settings.
+- **Auto-play next** with a 5-second "Next up" card (cancelable); loop one/all; mirror flip.
+- **First-run gesture tutorial** (skippable) that shows the swipe zones once.
+- **In-app floating mini-player** when the user leaves the player screen while a video is playing (dismissible; not system PiP unless enabled).
+- Frame capture saves **into the vault** and shows a snackbar with "View".
+
+### 31.5 Audio extras
+- Local **playlists** (create, reorder, duplicate), "Add to playlist" from anywhere, queue editing (drag to reorder, swipe to remove), "Play next" and "Add to queue".
+- **Audiobook mode** for long files: remembers position, adds bookmarks, 0.5×–3× speed, skip 15/30 s.
+- Sleep timer with "end of track", crossfade (0–10 s), and equalizer presets when the device supports it.
+- Embedded artwork and tags read in the background, with a tasteful generated-gradient fallback.
+
+### 31.6 Import & storage tools
+- **Import wizard:** pick files from any storage via the system picker, choose Copy or Move, see space needed vs. free before starting, and get a results screen.
+- **Optional "Add to vault" share target** (receives photos/videos/audio shared from other apps) is **off by default** because it makes the app visible in the share sheet; when enabled, it uses a neutral label.
+- **Move from gallery:** after copying, offer to remove the originals using the system's own delete-confirmation request; never delete without that system confirmation.
+- **Storage dashboard:** breakdown by type (simple chart), largest files, duplicates saving estimate, SD-card health hints (read-only mount, nearly full, slow card), and "Safe to remove card?" guidance that checks no job is running.
+- **Local backup/restore of the index** (database + settings, no secrets) to a file the user chooses.
+- **Scan history and diagnostics** (counts, durations, errors) viewable in Settings → Advanced.
+
+### 31.7 Security extras
+- **Lockdown mode:** one tap (from the lock-now button or Quick Settings tile) locks, clears caches and returns to the cover screen.
+- **Panic gesture** (optional): triple-tap on the status-bar area of the vault returns to the cover screen and locks.
+- **Secure session indicator:** a small, non-alarming lock dot in the vault top bar showing the time until auto-lock (hidden when the mode is "Until the app is closed").
+- **Biometric re-enrollment handling** and clear messaging when biometrics are disabled by the system.
+- **Tamper-evident hints:** if `.nomedia` disappears from a vault folder (for example after a file-manager clean-up), show a banner with a one-tap fix.
+
+### 31.8 Help & onboarding polish
+- Animated, skippable onboarding with a progress stepper and a **"Test your unlock"** step so the user confirms the PIN/biometrics work before continuing.
+- In-app **Help & tips** (available only after authentication): how to paste files into the vault folder, how to show hidden folders in a file manager, how to verify gallery hiding, how to switch auto-lock modes.
+- A one-time **"What this app does and doesn't do"** screen (Hidden ≠ encrypted), reachable again from Settings.
+
+### 31.9 Quality bars
+- 60 fps scrolling on 10 000+ items; cold start to cover screen < 800 ms; no ANR; crash-free handling of SD-card removal.
+- **Accessibility audit:** TalkBack pass on every screen, touch targets ≥ 48 dp, contrast ≥ 4.5:1, font scale up to 200 %, reduced-motion support.
+- **Tests:** unit tests for auth/lockout, auto-lock timing, scan diffing, file operations planner; Compose UI tests for the cover screen (layout, tap → auth), onboarding and the players' controls.
+- **Release hygiene:** R8/minify, baseline profile if possible, no debug logging of file names or PINs, strict mode in debug builds.
+
+### 31.10 Additional acceptance criteria
+21. The default auto-lock timing is **1 minute** on a fresh install and after "Reset app".
+22. The launcher icon matches Section 10.7 (light-gray squircle, matte black SIM with angled top-right notch, gold-and-orange segmented chip at the card's center) and has adaptive, monochrome and legacy variants.
+23. The post-auth panel, PIN screen and biometric prompt visually match the black cover screen.
+24. Photo editing is non-destructive and defaults to "Save as copy".
+25. Locked albums re-prompt for authentication each time they open.
+26. Every feature in this section is either working or listed as "Not built" in `brain.md`; there are no dead controls.
+27. The cover screen has automated UI tests asserting: back arrow present, title text "SIM Service", exactly two rows ("Jazz", "Zong") with chevrons, and no other visible elements.
+
+### 31.11 Phase adjustments
+- **Phase 1** also creates the icon assets (Section 10.7) and the black splash.
+- **Phase 3** builds the cover screen **exactly** as in Section 8.1 and the matching post-auth panel.
+- **New Phase 11 (Enhancements):** Sections 31.2–31.8, delivered in small slices with the same "files created / not verified / stop" rule.
+
+---
+
+## Appendix A — Icon master source (`sim_service_icon.svg`)
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E3035"/><stop offset="1" stop-color="#1C1D21"/></linearGradient>
+    <linearGradient id="squircle" x1="0.15" y1="0" x2="0.85" y2="1"><stop offset="0" stop-color="#F1F2F4"/><stop offset="0.55" stop-color="#D9DCE1"/><stop offset="1" stop-color="#BFC3CA"/></linearGradient>
+    <linearGradient id="sim" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#232427"/><stop offset="1" stop-color="#0B0B0D"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFE08A"/><stop offset="0.35" stop-color="#F7B84A"/><stop offset="0.7" stop-color="#EE8E2A"/><stop offset="1" stop-color="#C96A16"/></linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFF" stop-opacity="0"/><stop offset="0.5" stop-color="#FFF" stop-opacity="0.35"/><stop offset="1" stop-color="#FFF" stop-opacity="0"/></linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect x="152" y="152" width="720" height="720" rx="210" fill="url(#squircle)"/>
+  <rect x="156" y="156" width="712" height="712" rx="206" fill="none" stroke="#FFF" stroke-opacity="0.55" stroke-width="3"/>
+  <g transform="translate(0 52)">
+    <path d="M375 255 H585 L665 335 V645 Q665 665 645 665 H375 Q355 665 355 645 V275 Q355 255 375 255 Z" fill="url(#sim)" stroke="url(#sim)" stroke-width="14" stroke-linejoin="round"/>
+    <path d="M375 262 H582 L658 338 V645 Q658 658 645 658 H375 Q362 658 362 645 V275 Q362 262 375 262 Z" fill="none" stroke="#3A3C41" stroke-opacity="0.6" stroke-width="2.5"/>
+    <g transform="translate(0 -27)">
+      <rect x="417" y="402" width="190" height="170" rx="28" fill="url(#gold)"/>
+      <rect x="417" y="402" width="190" height="170" rx="28" fill="none" stroke="#A3540F" stroke-opacity="0.7" stroke-width="3"/>
+      <g stroke="#8A4710" stroke-opacity="0.6" stroke-width="5" stroke-linecap="round" fill="none">
+        <path d="M417 459 H472 M552 459 H607 M417 515 H472 M552 515 H607 M472 402 V459 M552 402 V459 M472 515 V572 M552 515 V572"/>
+        <rect x="472" y="459" width="80" height="56" rx="12"/>
+      </g>
+      <rect x="417" y="402" width="190" height="170" rx="28" fill="url(#sheen)" opacity="0.7"/>
+      <path d="M440 414 H584" stroke="#FFF" stroke-opacity="0.5" stroke-width="4" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>
+```
