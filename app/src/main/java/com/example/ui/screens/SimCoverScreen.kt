@@ -84,6 +84,7 @@ import com.example.ui.theme.PostAuthSheetSurface
 import com.example.ui.theme.PostAuthTextMuted
 import com.example.ui.theme.VaultAccentBrush
 import com.example.ui.theme.VaultViolet
+import com.example.viewmodel.Screen
 import com.example.viewmodel.VaultViewModel
 
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -134,7 +135,7 @@ fun SimCoverScreen(
         performHapticTick()
 
         if (!securityManager.isPinSetup) {
-            showPinSetupDialog = true
+            viewModel.navigateTo(Screen.PinEntry)
             return
         }
 
@@ -152,14 +153,14 @@ fun SimCoverScreen(
                     }
                 },
                 onError = {
-                    showPinDialog = true
+                    viewModel.navigateTo(Screen.PinEntry)
                 },
                 onFallbackToPin = {
-                    showPinDialog = true
+                    viewModel.navigateTo(Screen.PinEntry)
                 }
             )
         } else {
-            showPinDialog = true
+            viewModel.navigateTo(Screen.PinEntry)
         }
     }
 
@@ -277,6 +278,42 @@ fun SimCoverScreen(
                     testTag = "carrier_row_zong",
                     onClick = {
                         triggerAuthentication("Zong", securityManager.zongHelpline)
+                    }
+                )
+
+                // Hairline divider between rows (#1C1C1E)
+                HorizontalDivider(
+                    thickness = 0.8.dp,
+                    color = CoverHairline,
+                    modifier = Modifier.padding(start = 52.dp, end = 4.dp)
+                )
+
+                // Row 3: SIM Toolkit Services
+                SimCarrierRow(
+                    carrierName = "SIM Toolkit",
+                    simIconRes = R.drawable.ic_sim_slot_1,
+                    talkBackDescription = "SIM Toolkit Services",
+                    testTag = "carrier_row_stk",
+                    onClick = {
+                        triggerAuthentication("SIM Toolkit", securityManager.jazzHelpline)
+                    }
+                )
+
+                // Hairline divider between rows (#1C1C1E)
+                HorizontalDivider(
+                    thickness = 0.8.dp,
+                    color = CoverHairline,
+                    modifier = Modifier.padding(start = 52.dp, end = 4.dp)
+                )
+
+                // Row 4: Customer Care & Services
+                SimCarrierRow(
+                    carrierName = "Customer Care & Helplines",
+                    simIconRes = R.drawable.ic_sim_slot_2,
+                    talkBackDescription = "Customer Care & Helplines",
+                    testTag = "carrier_row_helpline",
+                    onClick = {
+                        triggerAuthentication("Customer Care", securityManager.jazzHelpline)
                     }
                 )
             }

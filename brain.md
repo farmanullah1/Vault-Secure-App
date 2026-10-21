@@ -3,46 +3,54 @@
 ## Decisions (storage mode, DI choice, libraries + versions)
 - **Master Specification**: Built according to **Private Vault — Master Build Specification (v3)**.
 - **Platform & UI**: Native Android (Kotlin, Jetpack Compose, Material 3, Single-Activity architecture).
-- **Core Upgrades & Modernizations**:
+- **Core Security & Intercept Flows**:
+  - **Launch Intercept & PIN Verification**:
+    - Dedicated full-screen `PinEntryScreen` that intercepts app launch and strictly gates all core app functionality behind cryptographic PBKDF2-HMAC-SHA256 verification (with SHA1 fallback) and BiometricPrompt.
+    - Rate-limiting lockout penalties: 5 failed attempts = 30s lockout, 6 = 60s, 7 = 300s, 8+ = 900s (15 min cap).
+    - Shuffled keypad digit randomization to prevent smudge guessing.
+    - Decoy PIN Safe support opening an isolated empty safe.
+  - **Auto-Lock Configuration & Timeout System**:
+    - Options: Immediate (0s), 1 minute (60s - DEFAULT), 2 minutes (120s), 5 minutes (300s), 30 minutes (1800s), and Until app is closed (-1).
+    - In "Until app is closed" mode: user can continue using the app until the process is closed or killed; when reopened from cold launch, user is required to enter PIN/password.
+    - SystemClock.elapsedRealtime() timing protects against device clock tampering.
+    - Screen-off broadcast receiver automatically locks vault when screen is turned off.
+    - Panic gestures: Flip-to-lock (accelerometer z < -7.0) and Shake-to-lock.
+  - **First-Time Access Permissions Setup (Spec 9.8)**:
+    - Dedicated `FirstTimePermissionsScreen` automatically shown after first authentication.
+    - Comprehensive checklist with live status badges (Granted / Needed / Optional / Skipped):
+      1. Folder Access (SD Card / SAF via ACTION_OPEN_DOCUMENT_TREE) with .nomedia protection.
+      2. Notification Permission (POST_NOTIFICATIONS on Android 13+) for background import/playback progress.
+      3. Biometric Authentication (Fingerprint / Face Unlock).
+      4. Battery Optimization Exemption for background work.
+    - Prominent zero-internet guarantee: "Private Safe never asks for internet, contacts, or location."
+    - Settings -> PERMISSIONS & ACCESS card provides live status and one-tap re-configuration anytime.
+  - **Disguised "SIM Services" Dashboard Screen (Spec 8.1 & 10.1)**:
+    - Pure dark utility appearance (`#000000`).
+    - Top bar with back arrow (closes app directly without authentication) and bold "SIM Service" title (long-press alternate unlock).
+    - Carrier cards and rows: SIM 1 Jazz, SIM 2 Zong, SIM Toolkit, and Customer Care helplines.
+    - Tapping carrier items intercepts with the PIN entry screen.
   - **Recycle Bin (Trash) & Secure Shredding**:
     - 30-day retention period with automatic purge of expired items (`trashTimestamp`).
-    - Restore single items or batch selections back to active vault galleries.
-    - Permanent deletion with optional Secure Shred (overwriting SAF document byte content with random bytes before deletion to thwart flash memory recovery).
-    - Room database schema upgraded to v4 (`isTrash`, `trashTimestamp`, `lastPlayedPositionMs`).
-  - **Dynamic Gallery Grid Layout**:
-    - Quick-toggle grid column layout (2, 3, or 4 columns) in vault media gallery for optimal viewing density.
-  - **Swipeable Photo Viewer**:
-    - Jetpack Compose Foundation `HorizontalPager` with smooth page transitions.
-    - Double-tap zoom with `Animatable` bounce and pan boundary clamps.
-    - 90-degree step rotation with memory preservation.
-    - Auto-advance slideshow mode (3.5-second interval).
-    - EXIF metadata inspection sheet (resolution, camera model, date taken, aperture, ISO, exposure, file size).
-    - Secure external share dialog via Android `Intent.ACTION_SEND`.
-    - Direct move-to-trash support.
-  - **Pro Video Player Upgrades**:
-    - Playlist queue navigation with Skip Previous and Skip Next controls.
-    - Persistent playback resume dialog ("Resume from MM:SS?") saving playback timestamps into Room database.
-    - Codec & audio boost options, A-B looping, PiP, Kids Lock, and HUD gestures.
-  - **Modern Audio Player**:
-    - Full playlist queue playback with Skip Previous, Skip Next, and Shuffle toggle.
-    - Embedded album art extraction via Android `MediaMetadataRetriever` with animated spinning vinyl record fallback.
-    - Configurable sleep timer dialog (15m, 30m, 45m, 60m).
+    - Permanent deletion with optional Secure Shred (overwriting SAF document byte content with random bytes before deletion).
+  - **Media Players & Galleries**:
+    - Dynamic column grid (2, 3, 4 cols).
+    - Photo Viewer with HorizontalPager, double-tap zoom/pan, rotation, slideshow, EXIF inspection, secure share.
+    - Video Player with playlist queue, resume playback prompt, HUD gestures, PiP, Kids Lock.
+    - Audio Player with queue, shuffle, embedded album art retriever, spinning vinyl animation, and sleep timer.
 
 ## Current phase & status
-- **Active Phase**: Modern Media Experience & Recycle Bin Integration Complete.
+- **Active Phase**: Launch Intercept, First-Time Permissions Setup, Auto-Lock Defaults & SIM Services Dashboard Complete.
 - **Build Status**: Fully implemented with zero fake data, full Compose Material 3 theming, Room v4, and clean state flows.
 
 ## Files updated this phase
-- `app/src/main/java/com/example/data/model/VaultMediaItem.kt`: Added `isTrash`, `trashTimestamp`, and `lastPlayedPositionMs` fields.
-- `app/src/main/java/com/example/data/dao/MediaDao.kt`: Updated active queries to filter out trashed items, added trash queries, batch restore/purge, and playback position updates.
-- `app/src/main/java/com/example/data/db/VaultDatabase.kt`: Bumped Room version to 4.
-- `app/src/main/java/com/example/data/repository/VaultRepository.kt`: Added trash flows, `moveToTrash`, `restoreFromTrash`, `permanentDeleteBatch`, `emptyTrash`, `purgeOldTrash`, `updateLastPlayedPosition`, and `shredDocument`.
-- `app/src/main/java/com/example/viewmodel/VaultViewModel.kt`: Added `VaultTab.TRASH`, `gridColumns`, trash state flows, batch selection actions, shred support, and queue navigation state.
-- `app/src/main/java/com/example/ui/screens/PhotoViewerScreen.kt`: Replaced single-image viewer with `HorizontalPager`, animated zoom/pan, rotation, slideshow, EXIF inspection, and secure share.
-- `app/src/main/java/com/example/ui/screens/AudioPlayerScreen.kt`: Added playlist queue, skip next/prev, shuffle, embedded album art retriever, spinning vinyl animation, and sleep timer.
-- `app/src/main/java/com/example/ui/screens/VideoPlayerScreen.kt`: Added playlist queue navigation, resume playback prompt, position saving, and fixed file size metrics.
-- `app/src/main/java/com/example/ui/screens/VaultMainScreen.kt`: Integrated grid column switcher, Recycle Bin tab/navigation, batch purge/restore dialogs, `TrashScreenContent`, and `TrashListItem`.
-- `app/src/main/java/com/example/MainActivity.kt`: Updated screen navigation routes to pass media lists and indices for continuous playback.
+- `app/src/main/java/com/example/security/PinSecurityManager.kt`: Added `KEY_PIN_LENGTH`, `KEY_LOCK_ON_SCREEN_OFF`, `KEY_DIRECT_PIN_LAUNCH`, `KEY_SHAKE_TO_LOCK`, `KEY_SENSITIVE_ACTION_REAUTH`, verified default auto-lock 1 minute.
+- `app/src/main/java/com/example/ui/screens/PinEntryScreen.kt`: Created dedicated full-screen PIN entry screen with keypad shuffle, biometric shortcut, lockout countdown, and setup mode.
+- `app/src/main/java/com/example/ui/screens/FirstTimePermissionsScreen.kt`: Created dedicated first-time access checklist asking for folder, notifications, biometrics, and battery optimization.
+- `app/src/main/java/com/example/viewmodel/VaultViewModel.kt`: Added `Screen.PinEntry`, `Screen.FirstTimePermissions`, initial routing based on direct PIN launch or disguise, and updated lock/unlock routing.
+- `app/src/main/java/com/example/MainActivity.kt`: Added screen-off broadcast receiver, shake-to-lock accelerometer listener, registered receivers, and navigation routing for PinEntry and FirstTimePermissions.
+- `app/src/main/java/com/example/ui/screens/SimCoverScreen.kt`: Added carrier dashboard rows (Jazz, Zong, STK, Helplines), and routed authentication through `Screen.PinEntry`.
+- `app/src/main/java/com/example/ui/components/PinKeypadDialog.kt`: Fixed indicator dot count and length-based verification logic.
+- `app/src/main/java/com/example/ui/screens/SettingsScreen.kt`: Added PERMISSIONS & ACCESS live status card, direct PIN launch toggle, lock on screen-off toggle, shake-to-lock toggle, and sensitive action re-auth toggle.
 
 ## Not verified / Not run
 - Physical hardware SIM Toolkit app invocation on a physical carrier SIM in Pakistan.
@@ -54,4 +62,4 @@
 - Some OEM ROMs lack the standard `com.android.stk` package; handled gracefully with a truthful informative dialog.
 
 ## Next steps
-- Open project in Android Studio and run `./gradlew assembleDebug` or deploy directly to test device.
+- Open project in Android Studio or compile with Gradle to verify build.

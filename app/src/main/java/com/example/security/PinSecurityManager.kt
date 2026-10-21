@@ -54,6 +54,11 @@ class PinSecurityManager(context: Context) {
         private const val KEY_DISGUISE_MODE = "key_disguise_mode"
         private const val KEY_FLIP_TO_LOCK = "key_flip_to_lock"
         private const val KEY_INTRUDER_LOGS = "key_intruder_logs"
+        private const val KEY_PIN_LENGTH = "key_pin_length"
+        private const val KEY_LOCK_ON_SCREEN_OFF = "key_lock_on_screen_off"
+        private const val KEY_DIRECT_PIN_LAUNCH = "key_direct_pin_launch"
+        private const val KEY_SHAKE_TO_LOCK = "key_shake_to_lock"
+        private const val KEY_SENSITIVE_ACTION_REAUTH = "key_sensitive_action_reauth"
 
         private const val ITERATIONS = 12000
         private const val KEY_LENGTH = 256
@@ -174,6 +179,26 @@ class PinSecurityManager(context: Context) {
         return diff < 120_000L // 2 minutes
     }
 
+    var pinLength: Int
+        get() = prefs.getInt(KEY_PIN_LENGTH, 4)
+        set(value) = prefs.edit().putInt(KEY_PIN_LENGTH, value.coerceIn(4, 8)).apply()
+
+    var isLockOnScreenOffEnabled: Boolean
+        get() = prefs.getBoolean(KEY_LOCK_ON_SCREEN_OFF, true)
+        set(value) = prefs.edit().putBoolean(KEY_LOCK_ON_SCREEN_OFF, value).apply()
+
+    var isDirectPinLaunchEnabled: Boolean
+        get() = prefs.getBoolean(KEY_DIRECT_PIN_LAUNCH, false)
+        set(value) = prefs.edit().putBoolean(KEY_DIRECT_PIN_LAUNCH, value).apply()
+
+    var isShakeToLockEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SHAKE_TO_LOCK, false)
+        set(value) = prefs.edit().putBoolean(KEY_SHAKE_TO_LOCK, value).apply()
+
+    var isSensitiveActionReauthRequired: Boolean
+        get() = prefs.getBoolean(KEY_SENSITIVE_ACTION_REAUTH, true)
+        set(value) = prefs.edit().putBoolean(KEY_SENSITIVE_ACTION_REAUTH, value).apply()
+
     fun setPin(pin: String): Boolean {
         if (pin.length < 4) return false
         val salt = ByteArray(SALT_LENGTH)
@@ -183,6 +208,7 @@ class PinSecurityManager(context: Context) {
         prefs.edit()
             .putString(KEY_PIN_HASH, Base64.encodeToString(hash, Base64.NO_WRAP))
             .putString(KEY_PIN_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
+            .putInt(KEY_PIN_LENGTH, pin.length)
             .putInt(KEY_FAILED_ATTEMPTS, 0)
             .putLong(KEY_LOCKOUT_UNTIL_ELAPSED_MS, 0L)
             .apply()

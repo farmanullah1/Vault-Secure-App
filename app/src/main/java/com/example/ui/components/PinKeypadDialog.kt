@@ -147,7 +147,7 @@ fun PinKeypadDialog(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val maxDots = 6
+                    val maxDots = securityManager.pinLength
                     for (i in 0 until maxDots) {
                         val isFilled = i < pin.length
                         Box(
@@ -244,21 +244,20 @@ fun PinKeypadDialog(
                                                 .size(64.dp)
                                                 .clip(CircleShape)
                                                 .background(DarkCarbon)
-                                                .clickable(enabled = !isLockedOut && pin.length < 6) {
+                                                .clickable(enabled = !isLockedOut && pin.length < securityManager.pinLength) {
                                                     performHaptic()
-                                                    pin += key
+                                                    val newPin = pin + key
+                                                    pin = newPin
                                                     errorMessage = null
-                                                    if (pin.length >= 4) {
-                                                        when (val result = securityManager.verifyPin(pin)) {
+                                                    if (newPin.length == securityManager.pinLength) {
+                                                        when (val result = securityManager.verifyPin(newPin)) {
                                                             is PinSecurityManager.VerificationResult.Success,
                                                             is PinSecurityManager.VerificationResult.DecoySuccess -> {
                                                                 onSuccess()
                                                             }
                                                             is PinSecurityManager.VerificationResult.Failed -> {
-                                                                if (pin.length == 6) {
-                                                                    errorMessage = "Incorrect PIN (${result.attemptsRemainingBeforeLockout} attempts remaining)"
-                                                                    pin = ""
-                                                                }
+                                                                errorMessage = "Incorrect PIN (${result.attemptsRemainingBeforeLockout} attempts remaining)"
+                                                                pin = ""
                                                             }
                                                             is PinSecurityManager.VerificationResult.LockedOut -> {
                                                                 lockoutMs = result.remainingMs

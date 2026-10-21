@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
-import android.content.BroadcastReceiver
 import android.media.AudioManager
 import android.net.Uri
 import android.os.BatteryManager
@@ -57,8 +56,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
-import androidx.compose.material.icons.filled.Battery80
+import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.ClosedCaptionDisabled
 import androidx.compose.material.icons.filled.FastForward
@@ -153,6 +153,7 @@ import com.example.ui.theme.SurfaceCard
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextWhite
 import com.example.ui.theme.VaultAccentBrush
+import com.example.ui.theme.VaultEmerald
 import com.example.ui.theme.VaultCyan
 import com.example.ui.theme.VaultViolet
 import com.example.ui.util.formatDuration
@@ -818,7 +819,7 @@ fun VideoPlayerScreen(
                 modifier = Modifier
                     .size(90.dp)
                     .clip(CircleShape)
-                    .background(VaultAccentBrush.copy(alpha = 0.5f)),
+                    .background(VaultEmerald.copy(alpha = 0.5f)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -932,7 +933,7 @@ fun VideoPlayerScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Icon(
-                            imageVector = Icons.Default.Battery80,
+                            imageVector = Icons.Default.BatteryFull,
                             contentDescription = "Battery",
                             tint = if (currentBatteryPct <= 20) DangerRed else VaultCyan,
                             modifier = Modifier.size(14.dp)

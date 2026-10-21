@@ -41,12 +41,33 @@ class MainActivity : FragmentActivity() {
     private var sensorManager: SensorManager? = null
     private var accelerometer: Sensor? = null
 
+    private val screenOffReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            if (intent?.action == android.content.Intent.ACTION_SCREEN_OFF) {
+                if (viewModel.isUnlocked.value && viewModel.securityManager.isLockOnScreenOffEnabled) {
+                    viewModel.lockVault()
+                }
+            }
+        }
+    }
+
     private val sensorListener = object : SensorEventListener {
+        private var lastShakeTime = 0L
         override fun onSensorChanged(event: SensorEvent?) {
             if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
+                val x = event.values[0]
+                val y = event.values[1]
                 val z = event.values[2]
                 if (z < -7.0f && viewModel.isUnlocked.value && viewModel.securityManager.isFlipToLockEnabled) {
                     viewModel.lockVault()
+                }
+                if (viewModel.isUnlocked.value && viewModel.securityManager.isShakeToLockEnabled) {
+                    val acceleration = Math.sqrt((x * x + y * y + z * z).toDouble()) - SensorManager.GRAVITY_EARTH
+                    val now = SystemClock.elapsedRealtime()
+                    if (acceleration > 12.0 && now - lastShakeTime > 1000L) {
+                        lastShakeTime = now
+                        viewModel.lockVault()
+                    }
                 }
             }
         }
@@ -56,6 +77,10 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        try {
+            registerReceiver(screenOffReceiver, android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF))
+        } catch (e: Exception) {}
 
         sensorManager = getSystemService(SENSOR_SERVICE) as? SensorManager
         accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -143,6 +168,13 @@ class MainActivity : FragmentActivity() {
             }
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            unregisterReceiver(screenOffReceiver)
+        } catch (e: Exception) {}
+    }
 }
 
 @Composable
@@ -151,6 +183,17 @@ fun AppNavigation(viewModel: VaultViewModel) {
     val allMedia by viewModel.allMedia.collectAsState()
 
     when (val screen = currentScreen) {
+        is Screen.PinEntry -> {
+            com.example.ui.screens.PinEntryScreen(
+                viewModel = viewModel,
+                onBackToCover = { viewModel.lockVault() }
+            )
+        }
+
+        is Screen.FirstTimePermissions -> {
+            com.example.ui.screens.FirstTimePermissionsScreen(viewModel = viewModel)
+        }
+
         is Screen.SimCover -> {
             SimCoverScreen(viewModel = viewModel)
         }

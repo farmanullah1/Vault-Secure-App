@@ -23,6 +23,8 @@ sealed class Screen {
     object SimCover : Screen()
     object CalculatorCover : Screen()
     object NotesCover : Screen()
+    object PinEntry : Screen()
+    object FirstTimePermissions : Screen()
     object VaultMain : Screen()
     data class PhotoViewer(val mediaId: Long) : Screen()
     data class VideoPlayer(val mediaId: Long) : Screen()
@@ -57,10 +59,14 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     val repository = VaultRepository(application, database.mediaDao(), securityManager)
 
     private val _currentScreen = MutableStateFlow<Screen>(
-        when (securityManager.disguiseMode) {
-            DisguiseMode.CALCULATOR -> Screen.CalculatorCover
-            DisguiseMode.NOTES -> Screen.NotesCover
-            else -> Screen.SimCover
+        if (securityManager.isDirectPinLaunchEnabled) {
+            Screen.PinEntry
+        } else {
+            when (securityManager.disguiseMode) {
+                DisguiseMode.CALCULATOR -> Screen.CalculatorCover
+                DisguiseMode.NOTES -> Screen.NotesCover
+                else -> Screen.SimCover
+            }
         }
     )
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
@@ -118,17 +124,36 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     val trashCount: StateFlow<Int> = repository.trashCount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val filteredMedia: StateFlow<List<VaultMediaItem>> = combine(
-        allMedia,
-        trashMedia,
+    private data class FilterCriteria(
+        val tab: VaultTab,
+        val query: String,
+        val sort: SortOption,
+        val favsOnly: Boolean,
+        val folder: String?,
+        val filterChip: String
+    )
+
+    private val _filterCriteria = combine(
         _selectedTab,
         _searchQuery,
         _sortOption,
-        combine(_showFavoritesOnly, _selectedFolder, _activeFilterChip) { favs, folder, chip -> Triple(favs, folder, chip) }
-    ) { allList, trashList, tab, query, sort, filters ->
-        val favsOnly = filters.first
-        val folder = filters.second
-        val filterChip = filters.third
+        _showFavoritesOnly,
+        combine(_selectedFolder, _activeFilterChip) { folder, chip -> Pair(folder, chip) }
+    ) { tab, query, sort, favs, (folder, chip) ->
+        FilterCriteria(tab, query, sort, favs, folder, chip)
+    }
+
+    val filteredMedia: StateFlow<List<VaultMediaItem>> = combine(
+        allMedia,
+        trashMedia,
+        _filterCriteria
+    ) { allList, trashList, criteria ->
+        val tab = criteria.tab
+        val query = criteria.query
+        val sort = criteria.sort
+        val favsOnly = criteria.favsOnly
+        val folder = criteria.folder
+        val filterChip = criteria.filterChip
 
         val sourceList = if (tab == VaultTab.TRASH) trashList else allList
 
@@ -299,7 +324,11 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     fun unlockVault() {
         _isUnlocked.value = true
-        _currentScreen.value = Screen.VaultMain
+        if (!securityManager.isFirstTimeSetupDone) {
+            _currentScreen.value = Screen.FirstTimePermissions
+        } else {
+            _currentScreen.value = Screen.VaultMain
+        }
         refreshNoMediaStatus()
         syncFolder()
     }
@@ -310,10 +339,14 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         _isAudioPlaying.value = false
         _selectedItemIds.value = emptySet()
         securityManager.isDecoySessionActive = false
-        _currentScreen.value = when (securityManager.disguiseMode) {
-            DisguiseMode.CALCULATOR -> Screen.CalculatorCover
-            DisguiseMode.NOTES -> Screen.NotesCover
-            else -> Screen.SimCover
+        _currentScreen.value = if (securityManager.isDirectPinLaunchEnabled) {
+            Screen.PinEntry
+        } else {
+            when (securityManager.disguiseMode) {
+                DisguiseMode.CALCULATOR -> Screen.CalculatorCover
+                DisguiseMode.NOTES -> Screen.NotesCover
+                else -> Screen.SimCover
+            }
         }
     }
 

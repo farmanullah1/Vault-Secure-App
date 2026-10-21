@@ -1,9 +1,17 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +35,7 @@ import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockClock
 import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Password
@@ -74,6 +83,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.security.BiometricHelper
 import com.example.security.PinSecurityManager
 import com.example.ui.components.PinChangeDialog
 import com.example.ui.theme.DarkCarbon
@@ -114,6 +124,30 @@ fun SettingsScreen(
     var showDisguiseDialog by remember { mutableStateOf(false) }
     var currentDisguise by remember { mutableStateOf(securityManager.disguiseMode) }
     var flipToLockEnabled by remember { mutableStateOf(securityManager.isFlipToLockEnabled) }
+    var lockOnScreenOff by remember { mutableStateOf(securityManager.isLockOnScreenOffEnabled) }
+    var directPinLaunch by remember { mutableStateOf(securityManager.isDirectPinLaunchEnabled) }
+    var shakeToLock by remember { mutableStateOf(securityManager.isShakeToLockEnabled) }
+    var sensitiveActionReauth by remember { mutableStateOf(securityManager.isSensitiveActionReauthRequired) }
+
+    var hasNotificationPermission by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+        )
+    }
+
+    val notificationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasNotificationPermission = isGranted
+        Toast.makeText(context, if (isGranted) "Notification permission granted" else "Permission denied", Toast.LENGTH_SHORT).show()
+    }
 
     val autoLockOptions = listOf(
         Pair(PinSecurityManager.AUTO_LOCK_IMMEDIATE, "Immediate (on background or screen-off)"),
@@ -260,6 +294,125 @@ fun SettingsScreen(
                         Icon(imageVector = Icons.Default.Sync, contentDescription = null, tint = TextMuted)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Rescan & Sync Media Files", color = TextMuted, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+
+        // Permissions Live Status Section (Spec 9.8 & 16)
+        item {
+            Text(
+                text = "PERMISSIONS & ACCESS",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextDim,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+                border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    // Item 1: Folder Access
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.Folder, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Folder Access (SAF)", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                val folderUri = securityManager.vaultFolderUri
+                                Text(
+                                    if (folderUri != null) "Granted: ${Uri.parse(folderUri).lastPathSegment}" else "Missing • Select vault folder",
+                                    fontSize = 12.sp,
+                                    color = if (folderUri != null) VaultEmerald else DangerRed
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = { folderPicker.launch(null) },
+                            colors = ButtonDefaults.buttonColors(containerColor = SurfaceBorder),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(if (securityManager.vaultFolderUri != null) "Change" else "Grant", color = TextWhite, fontSize = 12.sp)
+                        }
+                    }
+
+                    // Item 2: Notifications
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Notifications", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                Text(
+                                    if (hasNotificationPermission) "Granted • Background audio & scan ETA" else "Not granted • Optional",
+                                    fontSize = 12.sp,
+                                    color = if (hasNotificationPermission) VaultEmerald else TextMuted
+                                )
+                            }
+                        }
+                        if (!hasNotificationPermission) {
+                            Button(
+                                onClick = {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        hasNotificationPermission = true
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = SurfaceBorder),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Grant", color = TextWhite, fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    // Item 3: Biometrics
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.Fingerprint, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Biometrics Status", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                val available = BiometricHelper.isBiometricAvailable(context)
+                                Text(
+                                    if (available) "Hardware enrolled & ready" else "Hardware unavailable or not enrolled",
+                                    fontSize = 12.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+                    }
+
+                    // Review Full Permissions Setup
+                    Button(
+                        onClick = { viewModel.navigateTo(Screen.FirstTimePermissions) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = DarkCarbon)
+                    ) {
+                        Icon(imageVector = Icons.Default.FactCheck, contentDescription = null, tint = VaultEmerald)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Re-open Permissions Setup Wizard", color = TextWhite, fontSize = 13.sp)
                     }
                 }
             }
@@ -563,6 +716,114 @@ fun SettingsScreen(
                             onCheckedChange = {
                                 flipToLockEnabled = it
                                 securityManager.isFlipToLockEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkCarbon,
+                                checkedTrackColor = VaultEmerald
+                            )
+                        )
+                    }
+
+                    // Lock on Screen-Off
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Lock on Screen-Off", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                Text("Automatically lock vault when power button or screen turns off", fontSize = 12.sp, color = TextMuted)
+                            }
+                        }
+                        Switch(
+                            checked = lockOnScreenOff,
+                            onCheckedChange = {
+                                lockOnScreenOff = it
+                                securityManager.isLockOnScreenOffEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkCarbon,
+                                checkedTrackColor = VaultEmerald
+                            )
+                        )
+                    }
+
+                    // Direct PIN Launch Intercept
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.Password, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Direct PIN Launch Intercept", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                Text("Intercept app launch with PIN entry screen directly", fontSize = 12.sp, color = TextMuted)
+                            }
+                        }
+                        Switch(
+                            checked = directPinLaunch,
+                            onCheckedChange = {
+                                directPinLaunch = it
+                                securityManager.isDirectPinLaunchEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkCarbon,
+                                checkedTrackColor = VaultEmerald
+                            )
+                        )
+                    }
+
+                    // Shake-to-Lock Panic
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.Vibration, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Shake-to-Lock Panic", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                Text("Instantly return to cover and lock on rapid shake", fontSize = 12.sp, color = TextMuted)
+                            }
+                        }
+                        Switch(
+                            checked = shakeToLock,
+                            onCheckedChange = {
+                                shakeToLock = it
+                                securityManager.isShakeToLockEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkCarbon,
+                                checkedTrackColor = VaultEmerald
+                            )
+                        )
+                    }
+
+                    // Sensitive Action Re-Auth
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Sensitive Action Re-Auth", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                Text("Require PIN verification for permanent deletion & export", fontSize = 12.sp, color = TextMuted)
+                            }
+                        }
+                        Switch(
+                            checked = sensitiveActionReauth,
+                            onCheckedChange = {
+                                sensitiveActionReauth = it
+                                securityManager.isSensitiveActionReauthRequired = it
                             },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = DarkCarbon,
