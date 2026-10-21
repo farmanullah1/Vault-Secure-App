@@ -583,8 +583,10 @@ fun VaultMainScreen(
                         if (filteredMedia.isEmpty()) {
                             EmptyVaultState(
                                 title = "Safe is Empty",
-                                subtitle = "Tap + to secure photos, videos, audio, or private notes.",
-                                icon = Icons.Default.FolderOpen
+                                subtitle = "Secure photos, videos, audio, or private notes in your hidden safe.",
+                                icon = Icons.Default.FolderOpen,
+                                actionText = "Import Media",
+                                onAction = { showImportChoiceDialog = true }
                             )
                         } else {
                             LazyVerticalGrid(
@@ -629,8 +631,10 @@ fun VaultMainScreen(
                         if (filteredMedia.isEmpty()) {
                             EmptyVaultState(
                                 title = if (showFavoritesOnly) "No Favorite Photos" else "No Secured Photos",
-                                subtitle = if (showFavoritesOnly) "Star photos to keep them in quick favorites." else "Tap + to import sensitive photos into your private safe.",
-                                icon = Icons.Default.Image
+                                subtitle = if (showFavoritesOnly) "Star photos to keep them in quick favorites." else "Import sensitive photos into your private safe.",
+                                icon = Icons.Default.Image,
+                                actionText = if (showFavoritesOnly) null else "Import Photos",
+                                onAction = if (showFavoritesOnly) null else { { isMoveSelected = false; filePicker.launch(arrayOf("image/*")) } }
                             )
                         } else {
                             LazyVerticalGrid(
@@ -666,8 +670,10 @@ fun VaultMainScreen(
                         if (filteredMedia.isEmpty()) {
                             EmptyVaultState(
                                 title = if (showFavoritesOnly) "No Favorite Videos" else "No Secured Videos",
-                                subtitle = if (showFavoritesOnly) "Star videos to access them instantly." else "Tap + to import and hide private video files behind .nomedia protection.",
-                                icon = Icons.Default.VideoLibrary
+                                subtitle = if (showFavoritesOnly) "Star videos to access them instantly." else "Import and hide private video files behind .nomedia protection.",
+                                icon = Icons.Default.VideoLibrary,
+                                actionText = if (showFavoritesOnly) null else "Import Videos",
+                                onAction = if (showFavoritesOnly) null else { { isMoveSelected = false; filePicker.launch(arrayOf("video/*")) } }
                             )
                         } else {
                             LazyVerticalGrid(
@@ -703,8 +709,10 @@ fun VaultMainScreen(
                         if (filteredMedia.isEmpty()) {
                             EmptyVaultState(
                                 title = if (showFavoritesOnly) "No Favorite Audio" else "No Secured Audio",
-                                subtitle = "Tap + to import voice recordings or confidential music files.",
-                                icon = Icons.Default.Audiotrack
+                                subtitle = "Import voice recordings or confidential music files.",
+                                icon = Icons.Default.Audiotrack,
+                                actionText = if (showFavoritesOnly) null else "Import Audio",
+                                onAction = if (showFavoritesOnly) null else { { isMoveSelected = false; filePicker.launch(arrayOf("audio/*")) } }
                             )
                         } else {
                             LazyColumn(
@@ -739,8 +747,10 @@ fun VaultMainScreen(
                         if (filteredMedia.isEmpty()) {
                             EmptyVaultState(
                                 title = if (showFavoritesOnly) "No Favorite Notes" else "No Documents or Notes",
-                                subtitle = "Tap + to write an encrypted private note or import documents.",
-                                icon = Icons.Default.Description
+                                subtitle = "Write a private note or import confidential documents.",
+                                icon = Icons.Default.Description,
+                                actionText = "New Private Note",
+                                onAction = { showCreateNoteDialog = true }
                             )
                         } else {
                             LazyColumn(
@@ -1127,7 +1137,7 @@ fun VaultMainScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text("Write Secret Note", color = TextWhite, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                Text("Encrypted passwords, text records, thoughts", color = TextMuted, fontSize = 12.sp)
+                                Text("Private passwords, text records, thoughts", color = TextMuted, fontSize = 12.sp)
                             }
                         }
                     }
@@ -1331,6 +1341,7 @@ fun VaultMainScreen(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun PhotoGridItem(
     item: VaultMediaItem,
@@ -1345,7 +1356,7 @@ fun PhotoGridItem(
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .border(
                 width = if (isSelected) 2.dp else 1.dp,
                 color = if (isSelected) VaultEmerald else SurfaceBorder,
@@ -1398,6 +1409,7 @@ fun PhotoGridItem(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun VideoGridItem(
     item: VaultMediaItem,
@@ -1412,7 +1424,7 @@ fun VideoGridItem(
             .fillMaxWidth()
             .aspectRatio(0.85f)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .border(
                 width = if (isSelected) 2.dp else 1.dp,
                 color = if (isSelected) VaultEmerald else SurfaceBorder,
@@ -1507,6 +1519,7 @@ fun VideoGridItem(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun AudioListItem(
     item: VaultMediaItem,
@@ -1518,7 +1531,7 @@ fun AudioListItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .border(
                 width = if (isSelected) 2.dp else 1.dp,
                 color = if (isSelected) VaultEmerald else SurfaceBorder,
@@ -1594,7 +1607,13 @@ fun AudioListItem(
 }
 
 @Composable
-fun EmptyVaultState(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+fun EmptyVaultState(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    actionText: String? = null,
+    onAction: (() -> Unit)? = null
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1623,8 +1642,33 @@ fun EmptyVaultState(title: String, subtitle: String, icon: androidx.compose.ui.g
             fontSize = 13.sp,
             color = TextMuted,
             modifier = Modifier.padding(top = 6.dp),
-            lineHeight = 18.sp
+            lineHeight = 18.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
+
+        if (actionText != null && onAction != null) {
+            Spacer(modifier = Modifier.height(20.dp))
+            Button(
+                onClick = onAction,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = VaultEmerald),
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    tint = DarkCarbon,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = actionText,
+                    color = DarkCarbon,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+            }
+        }
     }
 }
 

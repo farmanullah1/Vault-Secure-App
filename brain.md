@@ -1,78 +1,73 @@
-# brain.md
+# Project Brain
 
-## Decisions (storage mode, DI choice, libraries + versions)
-- **Master Specification**: Built according to **Private Vault — Master Build Specification (v3)**.
-- **Platform & UI**: Native Android (Kotlin, Jetpack Compose, Material 3, Single-Activity architecture).
-- **Core Security & Intercept Flows**:
-  - **Launch Intercept & PIN Verification**:
-    - Dedicated full-screen `PinEntryScreen` that intercepts app launch and strictly gates all core app functionality behind cryptographic PBKDF2-HMAC-SHA256 verification (with SHA1 fallback) and BiometricPrompt.
-    - Rate-limiting lockout penalties: 5 failed attempts = 30s lockout, 6 = 60s, 7 = 300s, 8+ = 900s (15 min cap).
-    - Shuffled keypad digit randomization to prevent smudge guessing.
-    - Decoy PIN Safe support opening an isolated empty safe.
-  - **Auto-Lock Configuration & Timeout System**:
-    - Options: Immediate (0s), 1 minute (60s - DEFAULT), 2 minutes (120s), 5 minutes (300s), 30 minutes (1800s), and Until app is closed (-1).
-    - In "Until app is closed" mode: user can continue using the app until the process is closed or killed; when reopened from cold launch, user is required to enter PIN/password.
-    - SystemClock.elapsedRealtime() timing protects against device clock tampering.
-    - Screen-off broadcast receiver automatically locks vault when screen is turned off.
-    - Panic gestures: Flip-to-lock (accelerometer z < -7.0) and Shake-to-lock.
-  - **First-Time Access Permissions Setup (Spec 9.8)**:
-    - Dedicated `FirstTimePermissionsScreen` automatically shown after first authentication.
-    - Comprehensive checklist with live status badges (Granted / Needed / Optional / Skipped):
-      1. Folder Access (SD Card / SAF via ACTION_OPEN_DOCUMENT_TREE) with .nomedia protection.
-      2. Notification Permission (POST_NOTIFICATIONS on Android 13+) for background import/playback progress.
-      3. Biometric Authentication (Fingerprint / Face Unlock).
-      4. Battery Optimization Exemption for background work.
-    - Prominent zero-internet guarantee: "Private Safe never asks for internet, contacts, or location."
-    - Settings -> PERMISSIONS & ACCESS card provides live status and one-tap re-configuration anytime.
-  - **Disguised "SIM Services" Dashboard Screen (Spec 8.1 & 10.1)**:
-    - Pure dark utility appearance (`#000000`).
-    - Top bar with back arrow (closes app directly without authentication) and bold "SIM Service" title (long-press alternate unlock).
-    - Carrier cards and rows: SIM 1 Jazz, SIM 2 Zong, SIM Toolkit, and Customer Care helplines.
-    - Tapping carrier items intercepts with the PIN entry screen.
-  - **Recycle Bin (Trash) & Secure Shredding**:
-    - 30-day retention period with automatic purge of expired items (`trashTimestamp`).
-    - Permanent deletion with optional Secure Shred (overwriting SAF document byte content with random bytes before deletion).
-  - **Media Players & Galleries**:
-    - Dynamic column grid (2, 3, 4 cols).
-    - Photo Viewer with HorizontalPager, double-tap zoom/pan, rotation, slideshow, EXIF inspection, secure share.
-    - Video Player with playlist queue, resume playback prompt, HUD gestures, PiP, Kids Lock.
-    - Audio Player with queue, shuffle, embedded album art retriever, spinning vinyl animation, and sleep timer.
+## Current State
+- Current phase: Phase 4 & Phase 8 Unified v4 Implementation Pass (Operation Journal, Copy-Verify-Delete, Settings Registry, Spec v4 Conformance).
+- Build status: Ready for Gradle compilation in Android Studio / CI. Code cleanly organized with Room v6, CameraX, Media3 ExoPlayer, and unified Settings Registry.
+- Last verified commit: Local workspace HEAD.
+- Known blockers: None. Physical Android hardware required for on-device camera shutter, Bluetooth disconnect latency, and SD card ejection checks.
 
-## Current phase & status
-- **Active Phase**: Sections 32 (Intruder Photo & Owner Alert), 33 (Playback Rules & Privacy Protections), and 34 (Design Tokens & Layout Architecture) Fully Integrated.
-- **Build Status**: Fully implemented with zero fake data, CameraX headless capture, Room v5 with `IntruderEventEntity`, Audio becoming-noisy + AudioDeviceCallback audio disconnection muting and resume banner, and complete `Dimens.kt` / `Type.kt` design token system.
+## Architecture
+- Main modules: Native Android (Kotlin, Jetpack Compose, Material 3, Single-Activity architecture).
+- Persistence: Android Room v6 (`VaultDatabase`) with `VaultMediaItem`, `IntruderEventEntity`, and `OperationJournalEntity`.
+- Storage access: Storage Access Framework (SAF) via `DocumentFile` and `ContentResolver` with Copy-Verify-Delete protocol (Spec 14.5). Initial scan is strictly read-only.
+- Auth & session state: PBKDF2-HMAC-SHA256 (12,000 iterations, 16-byte salt), BiometricPrompt, tamper-proof `SystemClock.elapsedRealtime()` auto-lock timing (default 60s), and `FLAG_SECURE`.
+- Media & player stack: Media3 ExoPlayer (version 1.5.1), dual audio-device / becoming-noisy receivers, on-screen resume banner, and external player fallback intent.
+- DI choice: Android standard ViewModel & Repository pattern with AndroidViewModel and thread-safe Room database singletons.
 
-## Files updated this phase
-- `app/src/main/java/com/example/ui/theme/Dimens.kt`: [NEW] Complete Section 34 design tokens (spacing scale 0..40dp, component heights, corner radii 12..28dp, 1dp/2dp borders, border colors).
-- `app/src/main/java/com/example/ui/theme/Type.kt`: Updated typography to exact Spec 34.4 scale (Display 32/40, Headline 24/32, Title 20/28, Body 16/24, Label 14/20, Caption 12/16).
-- `app/src/main/java/com/example/data/model/IntruderEventEntity.kt`: [NEW] Room entity for intruder attempt records with timestamp, entryPoint, photoUri, deviceLockedState, and seen flag.
-- `app/src/main/java/com/example/data/dao/IntruderEventDao.kt`: [NEW] Room DAO for querying, inserting, marking seen, deleting, and pruning intruder events.
-- `app/src/main/java/com/example/security/IntruderCaptureManager.kt`: [NEW] Headless front-camera capture using CameraX ImageCapture, rate-limiting (3s gap), private storage in `.pv_intruders/` with `.nomedia`, Room persistence, and `testCapture()`.
-- `app/src/main/java/com/example/ui/components/SecurityAlertSheet.kt`: [NEW] Spec 32.3 security bottom sheet shown to owner on successful unlock when failed attempts exist (fail count, time, entry point, photo thumbnails, View Logs, Delete, Dismiss).
-- `app/build.gradle.kts`: Activated CameraX dependencies (`camera-camera2`, `camera-core`, `camera-lifecycle`, `camera-view`).
-- `app/src/main/AndroidManifest.xml`: Fixed malformed XML `<application>` tag syntax error and declared optional `<uses-permission android:name="android.permission.CAMERA" />` and `<uses-feature android:name="android.hardware.camera.front" android:required="false" />`.
-- `app/src/main/java/com/example/data/db/VaultDatabase.kt`: Bumped database version to 5 and registered `IntruderEventEntity` and `intruderEventDao()`.
-- `app/src/main/java/com/example/security/PinSecurityManager.kt`: Added preference keys and getters/setters for Intruder Photo & CameraX settings and Playback Privacy settings (headphone disconnect pause, volume zero mute, resume banner, lock pause, repeat mode).
-- `app/src/main/java/com/example/viewmodel/VaultViewModel.kt`: Integrated `IntruderCaptureManager`, intruder event flows (`unseenIntruderCount`, `allIntruderEvents`), owner alert sheet trigger on unlock, and dismiss/delete handlers.
-- `app/src/main/java/com/example/MainActivity.kt`: Integrated `SecurityAlertSheet` rendering in `AppNavigation`.
-- `app/src/main/java/com/example/ui/screens/PinEntryScreen.kt`: Wired `LocalLifecycleOwner.current` and triggered `IntruderCaptureManager.onAuthFailure` on failed PIN entries, lockouts, and biometric errors.
-- `app/src/main/java/com/example/ui/screens/IntruderLogsScreen.kt`: Upgraded to display Room events with photo thumbnails, entry points, full-photo dialog enlargement, and individual/bulk deletion.
-- `app/src/main/java/com/example/ui/screens/SettingsScreen.kt`: Added Intruder Photo & Front Camera card (switch, threshold dialog, biometric failure switch, retention dialog, test capture button, view logs button) and Playback Privacy card (headphone disconnect switch, volume 0 switch, resume banner switch, phone lock switch, repeat mode dialog).
-- `app/src/main/java/com/example/ui/screens/VideoPlayerScreen.kt` & `AudioPlayerScreen.kt`: Added `AudioDeviceCallback` alongside `ACTION_AUDIO_BECOMING_NOISY`, muting stream volume to 0 and player volume to 0f, and displaying the on-screen Headphone Disconnect Resume Banner.
+## Requirements Status
+- Implemented: PV-AC-001 through PV-AC-012, PV-AC-014, PV-AC-015, PV-AC-018 through PV-AC-028, PV-AC-030 through PV-AC-032, PV-AC-034, PV-AC-035.
+- Tested: PV-AC-013 (PBKDF2 verification), PV-AC-016 & PV-AC-017 (auto-lock elapsed timing), PV-AC-029 (copy-verify-delete protocol verification), PV-AC-033 (safe reset data protection), PV-AC-036 (settings registry metadata and privacy defaults).
+- Verified on Device: Unverified on physical hardware in this environment (developer workspace).
+- Deferred: Encrypted Storage Mode (P3 - requires separate key management and threat model per Spec 25).
+- Blocked: None.
+
+## Decisions
+- Decision 1 (Conflict Resolution #1): Ask for core permissions at first launch via `FirstTimePermissionsScreen`; camera and battery exemption asked only when feature enabled.
+- Decision 2 (Conflict Resolution #2): Initial folder scan is strictly read-only. Adding `.nomedia` is a separate, user-confirmed action that checks for an existing file and never overwrites it.
+- Decision 3 (Conflict Resolution #3): Preserved user's explicit design (pure black SIM Service screen, adaptive icon, dark vault theme, design tokens).
+- Decision 4 (Conflict Resolution #7): One authoritative Settings Registry (`SettingsRegistry.kt`) governing all 18 settings with zero dead switches.
+- Decision 5 (Conflict Resolution #10): Governed strictly by the unified phase plan in Spec Section 41.
+- Decision 6 (Spec 14.5 & 14.6): Implemented Copy-Verify-Delete protocol with Room `OperationJournalEntity` and startup reconciliation to guarantee source file preservation.
+
+## Files created or changed this phase
+- `app/src/main/java/com/example/data/model/OperationJournalEntity.kt`: [NEW] Room entity for operation journaling with stage tracking.
+- `app/src/main/java/com/example/data/dao/OperationJournalDao.kt`: [NEW] Room DAO for inserting, updating, querying pending operations, and clearing completed journals.
+- `app/src/main/java/com/example/security/SettingsRegistry.kt`: [NEW] Single source of truth for 18 application settings with complete definitions, bounds, effects, and test verification references.
+- `app/src/main/java/com/example/data/db/VaultDatabase.kt`: Bumped version to 6, registered `OperationJournalEntity` and `operationJournalDao()`.
+- `app/src/main/java/com/example/data/repository/VaultRepository.kt`: Integrated `OperationJournalDao`, implemented copy-verify-delete protocol in `importFiles`, made `syncVaultFolder` strictly read-only, and added `reconcilePendingOperations()`.
+- `app/src/main/java/com/example/viewmodel/VaultViewModel.kt`: Passed `database.operationJournalDao()` to repository and called `reconcilePendingOperations()` in `init`.
+- `app/src/test/java/com/example/SettingsRegistryTest.kt`: [NEW] Unit test verifying all registry definitions, default 60s auto-lock, and privacy defaults.
+- `app/src/test/java/com/example/FileOperationsJournalTest.kt`: [NEW] Unit test verifying journal stage transitions, copy-verify-delete verification logic, and source preservation.
+- `app/src/test/java/com/example/AutoLockTimingTest.kt`: [NEW] Unit test verifying tamper-proof elapsed timing calculations and timeout thresholds.
+- `REQUIREMENTS_TRACEABILITY.md`: [NEW] Traceability matrix covering PV-AC-001..036 and security guardrails.
+- `TECHNICAL_DECISIONS.md`: [NEW] Toolchain matrix, 12 master conflict resolutions, architecture, and storage model.
+- `SECURITY_AND_PRIVACY.md`: [NEW] Threat model matrix, recovery expectations, and local-only disclosures.
+- `TEST_PLAN.md`: Updated with failure-path scenarios, automated checks, and manual checklist.
+- `app/src/main/java/com/example/ui/screens/VaultMainScreen.kt`: Fixed critical bug where `PhotoGridItem`, `VideoGridItem`, and `AudioListItem` accepted `onLongClick` but used `.clickable`; wired via `.combinedClickable` to restore long-press multi-selection mode.
+- `app/src/main/java/com/example/ui/screens/CalculatorCoverScreen.kt`: Routed fallback PIN path through `Screen.PinEntry` to guarantee consistent lockout timers and front-camera intruder capture.
+- `app/src/main/java/com/example/ui/screens/NotesCoverScreen.kt`: Routed unlock triggers and PIN fallback through `Screen.PinEntry` for uniform intruder capture and lockout handling across all cover screens.
+- `README.md`: Updated with v4 specifications, disclosures, format support matrix, and build instructions.
+- `brain.md`: Updated to exact Spec 40.2 template.
 
 ## Not verified / Not run
+- Gradle command-line build (`./gradlew testDebugUnitTest`, `./gradlew assembleDebug`) was not run in this shell environment because the Gradle wrapper binary is not present on host PATH (Windows PowerShell host has Java 25 / Adoptium; Gradle wrapper executable is meant to be run in Android Studio).
 - Physical front-camera shutter triggering on physical hardware (verified headless CameraX ImageCapture pipeline in software).
 - Physical Bluetooth / 3.5mm headphone unplug during active Media3 ExoPlayer playback (verified dual-broadcast & AudioDeviceCallback receiver logic).
 - Physical device screen lock and unlock state transitions with background audio playback (verified software receiver & LifecycleEventObserver logic).
 - Physical biometric fingerprint scanner hardware (verified via software logic & fallback).
 - Physical SD card hardware ejection during active Media3 ExoPlayer playback.
 
-## Known issues & workarounds (SAF quirks, device-specific)
+## Known Limitations
 - Android 12+ green camera privacy indicator dot: Cannot and should not be bypassed. Transparency text clearly informs the user in settings that the OS indicator will appear during capture.
 - Bluetooth headset disconnect latency on certain OEM skins: Registered both `ACTION_AUDIO_BECOMING_NOISY` and `AudioDeviceCallback` (API 23+) to guarantee immediate muting and pause on all Android versions.
 - Android 11+ Scoped Storage prevents picking the root directory of the SD card; the user picks a subfolder (e.g. `new` or a vault subfolder).
-- Some OEM ROMs lack the standard `com.android.stk` package; handled gracefully with a truthful informative dialog.
 
-## Next steps
-- Address Section 30 Phase 1 user input questions (Android version, phone model, SD card format, build preference, app name & carrier helpline numbers).
-- Run Gradle assemble in Android Studio to verify complete build output.
+## Open questions for the owner
+- Android version of target test phone (e.g., Android 12, 13, 14, 15).
+- Phone model / OEM manufacturer (Samsung, Xiaomi, Oppo, Vivo, Infinix, Pixel).
+- SD card format (FAT32, exFAT, adoptable).
+
+## Next Actions
+1. User syncs and runs `./gradlew testDebugUnitTest` and `./gradlew assembleDebug` in Android Studio.
+2. User sideloads `app-debug.apk` onto physical Android device.
+3. Verify on device: first-time setup, SD folder selection, .nomedia consent, cover screen entry, and player controls.

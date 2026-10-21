@@ -44,7 +44,10 @@ class MainActivity : FragmentActivity() {
     private val screenOffReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             if (intent?.action == android.content.Intent.ACTION_SCREEN_OFF) {
-                if (viewModel.isUnlocked.value && viewModel.securityManager.isLockOnScreenOffEnabled) {
+                if (viewModel.isUnlocked.value &&
+                    viewModel.securityManager.isLockOnScreenOffEnabled &&
+                    viewModel.securityManager.autoLockSeconds != PinSecurityManager.AUTO_LOCK_ON_APP_CLOSE
+                ) {
                     viewModel.lockVault()
                 }
             }

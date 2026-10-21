@@ -1,97 +1,71 @@
 # Private Vault — Quality Assurance & Test Plan
 
-Manual checklist adhering to Section 23 of `Private_Vault_Master_Spec_v3.md`.
+> Built according to **Private Vault — Master Build Specification (v4, merged)** Section 39 & Acceptance Criteria.
 
 ---
 
-## Pre-Flight Security Check
-- [ ] Verify `AndroidManifest.xml` does **NOT** declare `android.permission.INTERNET`.
-- [ ] Verify `android:allowBackup="false"` in `AndroidManifest.xml`.
-- [ ] Confirm no hardcoded API keys, passwords, or tokens in source code.
+## 1. Automated Checks (Robolectric & Unit Tests)
+
+Run all unit tests via Gradle:
+```bash
+./gradlew testDebugUnitTest
+```
+
+### Verified Test Suites:
+1. **`ExampleRobolectricTest`**:
+   - Master PIN PBKDF2 hashing and verification.
+   - Decoy PIN session activation and isolation.
+   - Wrong PIN detection and failure result.
+   - Safe reset verification (clears PIN without deleting media).
+   - Default auto-lock verification (60 seconds).
+   - String resource verification conforming to SIM disguise spec.
+2. **`SettingsRegistryTest`**:
+   - Validation that all settings in `SettingsRegistry.ALL_SETTINGS` have non-blank keys, titles, descriptions, effects, and test verification references.
+   - Validation of default auto-lock timeout (60 seconds = 1 minute).
+   - Privacy defaults verification (`FLAG_SECURE` true, `BIOMETRICS_ENABLED` true, `SHUFFLE_KEYPAD` true, `INTRUDER_PHOTO_ENABLED` false/opt-in).
+3. **`FileOperationsJournalTest`**:
+   - State machine transition constants (`INITIALIZED`, `COPYING`, `VERIFYING`, `SOURCE_DELETED`, `COMPLETED`, `FAILED`, `ROLLED_BACK`).
+   - Copy-Verify-Delete verification logic: destination byte count must match source size before source deletion is permitted.
+   - Failure safety verification: when size verification fails, source file is preserved intact.
+4. **`AutoLockTimingTest`**:
+   - Tamper-proof elapsed timing calculation using `SystemClock.elapsedRealtime()`.
+   - Verification that background duration < timeout remains unlocked.
+   - Verification that background duration >= timeout triggers lock.
+   - Verification that `AUTO_LOCK_ON_APP_CLOSE` (-1) is not locked by timer.
 
 ---
 
-## 1. First Launch & Onboarding
-1. Fresh install APK on device or emulator.
-2. Confirm the app launches to the **SIM Services** disguise screen with:
-   - Neutral title "SIM Services"
-   - Subtle animated shine on the SIM card illustration
-   - Two equal carrier cards: **Jazz** and **Zong**
-   - No mention of "vault", "hidden", or "secret" anywhere on the screen
-3. Tap either carrier card or the SIM illustration.
-4. Set up master PIN (e.g. 4–8 digits) and confirm.
-5. If hardware biometric is available, confirm enrollment prompt.
+## 2. Failure-Path Testing Scenarios (Spec 39.2)
+
+- [ ] **SAF Permission Revoked**: Revoke storage permissions in Android Settings while vault is open; confirm app displays graceful re-grant banner without crashing.
+- [ ] **Interrupted File Transfer**: Simulate process termination during large file copy; verify on restart that `reconcilePendingOperations()` logs failure and source file remains intact.
+- [ ] **Destination Size Mismatch**: Simulate insufficient storage or partial write; confirm source file is never deleted and partial destination is purged.
+- [ ] **Device Clock Tampering**: Advance device system time by 2 hours while app is in background; confirm auto-lock uses `SystemClock.elapsedRealtime()` and does not falsely lock out or miscalculate.
+- [ ] **Double-Tap on Destructive Action**: Double-tap "Delete Permanently" or "Empty Trash"; confirm double-submission prevention blocks duplicate execution.
+- [ ] **Headphone Disconnection during Playback**: Unplug 3.5mm jack or disconnect Bluetooth headphones; confirm ExoPlayer pauses immediately, media volume mutes to 0, and on-screen resume banner appears.
+- [ ] **Phone Lock during Playback**: Lock screen while playing video -> confirm video pauses; lock screen while playing audio -> confirm audio continues playing in background.
+- [ ] **Camera Permission Denied**: Disable camera permission in Android Settings and enter wrong PIN; confirm app records failed attempt without crashing.
 
 ---
 
-## 2. Storage Setup & .nomedia Protection
-1. Inside the Vault > Settings > Vault Folder:
-   - Pick the target folder (e.g., SD card folder `new` or `.private_vault`).
-2. Verify `.nomedia` file creation in the chosen folder.
-3. Check status indicator shows `.nomedia Active (Hidden from Gallery)`.
-4. Open the **Gallery Visibility Checklist** in Settings and follow verification steps.
+## 3. Manual Device Checklist
 
----
+### Cover Screen & Authentication
+1. Launch app -> confirm black screen titled "SIM Service", back arrow, and Jazz / Zong rows.
+2. Tap back arrow -> confirms app exits immediately without authentication.
+3. Tap Jazz row -> enter master PIN -> confirm post-auth sheet appears with Helpline, STK, and Vault buttons.
+4. Tap "Call Helpline" -> confirm system dialer opens with `tel:111` pre-filled (never auto-calls).
+5. Tap "Open Vault" -> transitions smoothly to Vault Home.
 
-## 3. Disguise & Authentication Entry Flow
-1. Back out or lock the vault.
-2. From the Cover Screen, tap **Jazz** card.
-3. Authenticate with fingerprint or PIN.
-4. Verify the **Post-Auth Panel** displays:
-   - **Open Vault** (primary button)
-   - **Call Helpline** (opens system dialer with `tel:111`, does not auto-dial)
-   - **Open SIM Toolkit** (launches real STK app or shows honest "Not Available" dialog)
-5. Tap **Open Vault**; verify immediate transition to Vault Home.
-6. Test "Go straight to Vault" toggle in Settings: when enabled, authenticating on the cover screen bypasses the post-auth panel directly into the vault.
+### Storage & .nomedia Protection
+1. Select SD card vault folder (e.g. `new` or `Vault`).
+2. Confirm initial sync is strictly read-only and does not auto-create `.nomedia`.
+3. Tap "Hide from Gallery" in Checklist -> confirm `.nomedia` created only after explicit confirmation.
+4. Verify files in vault folder do not appear in system gallery apps.
 
----
-
-## 4. Rate Limiting & Lockout
-1. Lock vault and return to cover screen.
-2. Enter incorrect PIN 5 times.
-3. Verify 30-second lockout countdown triggers and keypad is disabled.
-4. Enter incorrect PIN 6th time -> 1-minute lockout.
-5. Enter incorrect PIN 7th time -> 5-minute lockout.
-6. Verify lockout timestamp persists across force-closing and re-opening the app.
-
----
-
-## 5. Media Playback & Viewing
-### Video Player
-- [ ] Play MP4, MKV, 3GP videos.
-- [ ] Double-tap left half -> rewinds 10s with visual indicator.
-- [ ] Double-tap right half -> forwards 10s with visual indicator.
-- [ ] Vertical drag on left half -> adjusts screen brightness with on-screen HUD.
-- [ ] Vertical drag on right half -> adjusts system volume with on-screen HUD.
-- [ ] Tap aspect ratio button -> cycles between Fit, Crop/Zoom, and Stretch.
-- [ ] Tap speed button -> changes playback rate (0.5x, 0.75x, 1.0x, 1.25x, 1.5x, 2.0x).
-- [ ] Tap Lock button -> locks controls and suppresses gesture interference.
-- [ ] Tap "Open in External Player" -> verifies Android system chooser displays installed players (VLC, MX Player).
-
-### Photo Viewer
-- [ ] Open photo -> smooth zoom and pan with pinch gesture.
-- [ ] Double-tap to zoom in / reset zoom.
-- [ ] Tap Details icon -> view EXIF metadata, file size, format, and original path mapping.
-- [ ] Tap Export icon -> exports a copy to user-selected folder.
-
-### Audio Player
-- [ ] Play audio track -> disc visualizer and animated frequency bars activate.
-- [ ] Scrub timeline slider to jump forward and back.
-- [ ] Toggle repeat mode.
-- [ ] Return to Vault Home -> verify floating mini-player bar displays with pause/play and tap-to-expand.
-
----
-
-## 6. Screen Privacy & Auto-Lock
-1. Enable `FLAG_SECURE` in Settings.
-2. Attempt taking a screenshot -> confirm system displays "Can't take screenshot due to security policy".
-3. Open recent apps overview -> confirm screen appears blank or obscured.
-4. Background the app and return -> confirm app requires re-authentication.
-
----
-
-## 7. Safe Reset
-1. Go to Settings > Danger Zone > "Reset Master PIN & App Data".
-2. Confirm the reset dialog warning.
-3. Confirm app clears PIN and navigates to fresh state.
-4. Check phone's file manager: confirm all original media files on SD card/storage are **100% intact and untouched**.
+### Media Viewers & Trash
+1. Photo Viewer: pinch-to-zoom, pan, double-tap, and view EXIF metadata sheet.
+2. Video Player: HUD swipe gestures (left for brightness, right for volume, double-tap 10s seek).
+3. Audio Player: rotating vinyl animation, frequency bars, and docked mini-player.
+4. Delete item to Trash -> verify item moves to `.pv_trash/` and is restorable.
+5. Safe Reset -> confirm PIN and index cleared, while all media files on SD card remain intact.

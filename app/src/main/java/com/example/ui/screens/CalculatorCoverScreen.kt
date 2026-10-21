@@ -49,8 +49,6 @@ import androidx.fragment.app.FragmentActivity
 import com.example.R
 import com.example.security.BiometricHelper
 import com.example.security.PinSecurityManager
-import com.example.ui.components.PinKeypadDialog
-import com.example.ui.components.PinSetupDialog
 import com.example.ui.theme.DarkCarbon
 import com.example.ui.theme.SurfaceCard
 import com.example.ui.theme.SurfaceElevated
@@ -71,8 +69,6 @@ fun CalculatorCoverScreen(
 
     var expression by remember { mutableStateOf("") }
     var resultText by remember { mutableStateOf("0") }
-    var showPinDialog by remember { mutableStateOf(false) }
-    var showSetupDialog by remember { mutableStateOf(false) }
 
     fun vibrate() {
         if (securityManager.isHapticEnabled) {
@@ -82,7 +78,7 @@ fun CalculatorCoverScreen(
 
     fun triggerVaultUnlock() {
         if (!securityManager.isPinSetup) {
-            showSetupDialog = true
+            viewModel.navigateTo(com.example.viewmodel.Screen.PinEntry)
             return
         }
 
@@ -93,11 +89,11 @@ fun CalculatorCoverScreen(
                 title = "Unlock Private Vault",
                 subtitle = "Verify identity to open vault",
                 onSuccess = { viewModel.unlockVault() },
-                onError = { showPinDialog = true },
-                onFallbackToPin = { showPinDialog = true }
+                onError = { viewModel.navigateTo(com.example.viewmodel.Screen.PinEntry) },
+                onFallbackToPin = { viewModel.navigateTo(com.example.viewmodel.Screen.PinEntry) }
             )
         } else {
-            showPinDialog = true
+            viewModel.navigateTo(com.example.viewmodel.Screen.PinEntry)
         }
     }
 
@@ -315,27 +311,5 @@ fun CalculatorCoverScreen(
                 }
             }
         }
-    }
-
-    if (showPinDialog) {
-        PinKeypadDialog(
-            securityManager = securityManager,
-            onSuccess = {
-                showPinDialog = false
-                viewModel.unlockVault()
-            },
-            onDismiss = { showPinDialog = false }
-        )
-    }
-
-    if (showSetupDialog) {
-        PinSetupDialog(
-            securityManager = securityManager,
-            onPinCreated = {
-                showSetupDialog = false
-                viewModel.unlockVault()
-            },
-            onDismiss = { showSetupDialog = false }
-        )
     }
 }

@@ -58,7 +58,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     val securityManager = PinSecurityManager(application)
     private val database = VaultDatabase.getInstance(application)
-    val repository = VaultRepository(application, database.mediaDao(), securityManager)
+    val repository = VaultRepository(application, database.mediaDao(), database.operationJournalDao(), securityManager)
     val intruderCaptureManager = IntruderCaptureManager(application, securityManager)
 
     val unseenIntruderCount: StateFlow<Int> = database.intruderEventDao().getUnseenCount()
@@ -222,6 +222,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     init {
         refreshNoMediaStatus()
         viewModelScope.launch {
+            repository.reconcilePendingOperations()
             repository.purgeOldTrash()
         }
     }

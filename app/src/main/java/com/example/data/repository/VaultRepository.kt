@@ -7,16 +7,9 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import androidx.documentfile.provider.DocumentFile
-import com.example.data.dao.MediaDao
-import com.example.data.model.MediaType
-import com.example.data.model.VaultMediaItem
-import com.example.security.PinSecurityManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.withContext
-import java.io.InputStream
-import java.io.OutputStream
-import java.security.SecureRandom
+import com.example.data.dao.OperationJournalDao
+import com.example.data.model.OperationJournalEntity
+import java.util.UUID
 
 data class ImportProgress(
     val current: Int,
@@ -29,6 +22,7 @@ data class ImportProgress(
 class VaultRepository(
     private val context: Context,
     private val mediaDao: MediaDao,
+    private val operationJournalDao: OperationJournalDao,
     private val securityManager: PinSecurityManager
 ) {
 
@@ -218,7 +212,8 @@ class VaultRepository(
         val targetDir = DocumentFile.fromTreeUri(context, folderUri)
             ?: throw IllegalStateException("Cannot access vault folder")
 
-        ensureNoMediaFile()
+        // Note: Initial scan & import do NOT auto-create .nomedia per Spec 2.1 Conflict Resolution #2 & Spec 14.8.
+        // Hiding from gallery via .nomedia is an explicit user-confirmed action.
 
         var successCount = 0
         val total = sourceUris.size
@@ -244,31 +239,71 @@ class VaultRepository(
                 )
             )
 
+            val opId = UUID.randomUUID().toString()
+            val opType = if (isMove) OperationJournalEntity.TYPE_IMPORT_MOVE else OperationJournalEntity.TYPE_IMPORT_COPY
+            val journalEntry = OperationJournalEntity(
+                operationId = opId,
+                operationType = opType,
+                sourceUri = sourceUri.toString(),
+                fileSizeBytes = sourceSize,
+                stage = OperationJournalEntity.STAGE_INITIALIZED
+            )
+            operationJournalDao.insert(journalEntry)
+
+            var newDoc: DocumentFile? = null
             try {
-                val newDoc = targetDir.createFile(mimeType, fileName) ?: continue
+                newDoc = targetDir.createFile(mimeType, fileName)
+                if (newDoc == null) {
+                    operationJournalDao.updateStage(
+                        operationId = opId,
+                        stage = OperationJournalEntity.STAGE_FAILED,
+                        bytesTransferred = 0L,
+                        sanitizedError = "Failed to create destination file in vault folder"
+                    )
+                    continue
+                }
+
+                operationJournalDao.updateStage(
+                    operationId = opId,
+                    stage = OperationJournalEntity.STAGE_COPYING,
+                    bytesTransferred = 0L
+                )
 
                 var bytesCopied: Long = 0
                 context.contentResolver.openInputStream(sourceUri)?.use { input: InputStream ->
                     context.contentResolver.openOutputStream(newDoc.uri)?.use { output: OutputStream ->
                         bytesCopied = input.copyTo(output)
+                        output.flush()
                     }
                 }
 
-                val mediaType = MediaType.fromMimeType(mimeType)
-                val item = VaultMediaItem(
-                    uriString = newDoc.uri.toString(),
-                    originalPathOrUri = sourceUri.toString(),
-                    originalDirectory = directoryGuess,
-                    fileName = newDoc.name ?: fileName,
-                    mimeType = mimeType,
-                    mediaType = mediaType.name,
-                    fileSizeBytes = if (bytesCopied > 0) bytesCopied else sourceSize,
-                    dateAdded = System.currentTimeMillis()
+                // Stage: VERIFYING (Spec 14.5: size verify before finalizing or deleting source)
+                operationJournalDao.updateStage(
+                    operationId = opId,
+                    stage = OperationJournalEntity.STAGE_VERIFYING,
+                    bytesTransferred = bytesCopied
                 )
-                mediaDao.insert(item)
-                successCount++
 
-                if (isMove && bytesCopied > 0) {
+                val verificationPassed = if (sourceSize > 0L) {
+                    bytesCopied == sourceSize
+                } else {
+                    bytesCopied > 0L
+                }
+
+                if (!verificationPassed) {
+                    // Verification failed: Remove partial destination, never touch source!
+                    try { newDoc.delete() } catch (_: Exception) {}
+                    operationJournalDao.updateStage(
+                        operationId = opId,
+                        stage = OperationJournalEntity.STAGE_FAILED,
+                        bytesTransferred = bytesCopied,
+                        sanitizedError = "Destination size mismatch verification failed. Source preserved."
+                    )
+                    continue
+                }
+
+                // Source deletion ONLY after destination is verified (Spec 14.5, PV-STO-002)
+                if (isMove) {
                     try {
                         DocumentsContract.deleteDocument(context.contentResolver, sourceUri)
                     } catch (e: Exception) {
@@ -279,9 +314,40 @@ class VaultRepository(
                             // Source may be read-only
                         }
                     }
+                    operationJournalDao.updateStage(
+                        operationId = opId,
+                        stage = OperationJournalEntity.STAGE_SOURCE_DELETED,
+                        bytesTransferred = bytesCopied
+                    )
                 }
+
+                val mediaType = MediaType.fromMimeType(mimeType)
+                val item = VaultMediaItem(
+                    uriString = newDoc.uri.toString(),
+                    originalPathOrUri = sourceUri.toString(),
+                    originalDirectory = directoryGuess,
+                    fileName = newDoc.name ?: fileName,
+                    mimeType = mimeType,
+                    mediaType = mediaType.name,
+                    fileSizeBytes = bytesCopied,
+                    dateAdded = System.currentTimeMillis()
+                )
+                mediaDao.insert(item)
+
+                operationJournalDao.updateStage(
+                    operationId = opId,
+                    stage = OperationJournalEntity.STAGE_COMPLETED,
+                    bytesTransferred = bytesCopied
+                )
+                successCount++
             } catch (e: Exception) {
-                e.printStackTrace()
+                // Keep source, record sanitized error
+                operationJournalDao.updateStage(
+                    operationId = opId,
+                    stage = OperationJournalEntity.STAGE_FAILED,
+                    bytesTransferred = 0L,
+                    sanitizedError = e.javaClass.simpleName
+                )
             }
         }
 
@@ -301,33 +367,83 @@ class VaultRepository(
         destinationTreeUri: Uri,
         deleteFromVault: Boolean = false
     ): Boolean = withContext(Dispatchers.IO) {
+        val opId = UUID.randomUUID().toString()
+        val opType = if (deleteFromVault) OperationJournalEntity.TYPE_RESTORE else OperationJournalEntity.TYPE_EXPORT
+        val journalEntry = OperationJournalEntity(
+            operationId = opId,
+            operationType = opType,
+            sourceUri = item.uriString,
+            fileSizeBytes = item.fileSizeBytes,
+            stage = OperationJournalEntity.STAGE_INITIALIZED
+        )
+        operationJournalDao.insert(journalEntry)
+
         try {
             val destDir = DocumentFile.fromTreeUri(context, destinationTreeUri) ?: return@withContext false
             val newFile = destDir.createFile(item.mimeType, item.fileName) ?: return@withContext false
 
+            operationJournalDao.updateStage(
+                operationId = opId,
+                stage = OperationJournalEntity.STAGE_COPYING,
+                bytesTransferred = 0L
+            )
+
             val sourceUri = Uri.parse(item.uriString)
+            var bytesCopied = 0L
             context.contentResolver.openInputStream(sourceUri)?.use { input ->
                 context.contentResolver.openOutputStream(newFile.uri)?.use { output ->
-                    input.copyTo(output)
+                    bytesCopied = input.copyTo(output)
+                    output.flush()
                 }
+            }
+
+            // Verify before deleting from vault if restore was requested
+            val verified = if (item.fileSizeBytes > 0L) bytesCopied == item.fileSizeBytes else bytesCopied > 0L
+            if (!verified) {
+                try { newFile.delete() } catch (_: Exception) {}
+                operationJournalDao.updateStage(
+                    operationId = opId,
+                    stage = OperationJournalEntity.STAGE_FAILED,
+                    bytesTransferred = bytesCopied,
+                    sanitizedError = "Export verification failed"
+                )
+                return@withContext false
             }
 
             if (deleteFromVault) {
                 deleteMedia(item)
+                operationJournalDao.updateStage(
+                    operationId = opId,
+                    stage = OperationJournalEntity.STAGE_SOURCE_DELETED,
+                    bytesTransferred = bytesCopied
+                )
             }
+
+            operationJournalDao.updateStage(
+                operationId = opId,
+                stage = OperationJournalEntity.STAGE_COMPLETED,
+                bytesTransferred = bytesCopied
+            )
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            operationJournalDao.updateStage(
+                operationId = opId,
+                stage = OperationJournalEntity.STAGE_FAILED,
+                bytesTransferred = 0L,
+                sanitizedError = e.javaClass.simpleName
+            )
             false
         }
     }
 
+    /**
+     * Strictly read-only scan of vault folder per Spec 2.1 Conflict Resolution #2 & Spec 14.8.
+     * Never creates or modifies files.
+     */
     suspend fun syncVaultFolder(): Int = withContext(Dispatchers.IO) {
         val folderUri = getVaultFolderUri() ?: return@withContext 0
         val dir = DocumentFile.fromTreeUri(context, folderUri) ?: return@withContext 0
         if (!dir.exists() || !dir.isDirectory) return@withContext 0
-
-        ensureNoMediaFile()
 
         val files = dir.listFiles()
         var newCount = 0
@@ -354,6 +470,43 @@ class VaultRepository(
             }
         }
         newCount
+    }
+
+    /**
+     * Reconciles any unfinished operations from process death or unexpected interruption.
+     * Fulfills Spec 14.6 & PV-STO-003.
+     */
+    suspend fun reconcilePendingOperations(): Int = withContext(Dispatchers.IO) {
+        val pending = operationJournalDao.getPendingOperations()
+        var reconciledCount = 0
+        for (op in pending) {
+            when (op.stage) {
+                OperationJournalEntity.STAGE_INITIALIZED,
+                OperationJournalEntity.STAGE_COPYING -> {
+                    // Interrupted before destination was verified:
+                    // Source was not deleted. Mark failed for audit and preserve source.
+                    operationJournalDao.updateStage(
+                        operationId = op.operationId,
+                        stage = OperationJournalEntity.STAGE_FAILED,
+                        bytesTransferred = op.bytesTransferred,
+                        sanitizedError = "Interrupted transfer before verification. Source preserved."
+                    )
+                    reconciledCount++
+                }
+                OperationJournalEntity.STAGE_VERIFYING,
+                OperationJournalEntity.STAGE_SOURCE_DELETED -> {
+                    // Destination verification or move reached; mark completed.
+                    operationJournalDao.updateStage(
+                        operationId = op.operationId,
+                        stage = OperationJournalEntity.STAGE_COMPLETED,
+                        bytesTransferred = op.bytesTransferred,
+                        sanitizedError = null
+                    )
+                    reconciledCount++
+                }
+            }
+        }
+        reconciledCount
     }
 
     suspend fun safeResetDatabase() = withContext(Dispatchers.IO) {

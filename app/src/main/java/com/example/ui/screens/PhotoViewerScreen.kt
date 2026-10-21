@@ -305,9 +305,10 @@ fun PhotoViewerScreen(
             title = { Text("Share Photo", color = TextWhite, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    text = "External apps will receive a temporary read grant for this image. Would you like to share directly?",
+                    text = "Notice: This file will leave the vault and will no longer be protected by your PIN or app lock. The receiving app is beyond Private Vault's control. A temporary read grant will be granted.",
                     color = TextMuted,
-                    fontSize = 13.sp
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
                 )
             },
             confirmButton = {
