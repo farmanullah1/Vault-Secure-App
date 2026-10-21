@@ -43,6 +43,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.security.PinSecurityManager
+import android.Manifest
+import android.content.pm.PackageManager
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import java.io.File
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
 import com.example.ui.theme.DarkCarbon
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.SurfaceBorder
@@ -70,7 +81,30 @@ fun PinKeypadDialog(
         }
     }
 
-    // Lockout countdown timer
+    // Context & helpers for intruder photo capture
+    val context = LocalContext.current
+    val privacyDir = remember { File(context.filesDir, "privacy").apply { if (!exists()) mkdirs() } }
+    var pendingCaptureUri by remember { mutableStateOf<Uri?>(null) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            pendingCaptureUri?.let { uri ->
+                takePictureLauncher.launch(uri)
+                pendingCaptureUri = null
+            }
+        } else {
+            Toast.makeText(context, "Camera permission denied – cannot capture intruder photo.", Toast.LENGTH_SHORT).show()
+        }
+    }
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            Toast.makeText(context, "Intruder photo captured.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     LaunchedEffect(lockoutMs) {
         if (lockoutMs > 0) {
             while (lockoutMs > 0) {
