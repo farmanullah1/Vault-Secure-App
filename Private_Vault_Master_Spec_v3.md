@@ -122,6 +122,8 @@ app/src/main/java/com/example/privatevault/
 - `io.coil-kt.coil3` (compose, video, gif)
 - `com.google.dagger:hilt` (optional)
 - `androidx.exifinterface:exifinterface`
+- `androidx.camera` (camera-core, camera-camera2, camera-lifecycle) for the optional intruder photo (Section 32)
+- `androidx.window` (window size classes, fold posture) and `androidx.compose.material3:material3-window-size-class` (Section 34)
 - `androidx.core:core-splashscreen`
 - Test: JUnit, Turbine, Room testing, Compose UI test
 
@@ -137,7 +139,9 @@ Declare **only** what is needed:
 - `POST_NOTIFICATIONS` (Android 13+, for import/playback notifications)
 - `FOREGROUND_SERVICE` + the correct foreground service types for the target SDK (`dataSync` for imports, `mediaPlayback` for audio)
 - `WAKE_LOCK` (player)
-- **Do NOT** request: `INTERNET`, `READ_PHONE_STATE`, `CALL_PHONE`, `MANAGE_EXTERNAL_STORAGE`, contacts, location, camera, mic.
+- `CAMERA` (runtime, **optional**, requested only when the user turns on "Intruder photo"; declare `<uses-feature android:name="android.hardware.camera.front" android:required="false"/>` so the app still installs on devices without a front camera)
+- `MODIFY_AUDIO_SETTINGS` is **not** needed for `setStreamVolume`; do not declare it unless a specific API requires it.
+- **Do NOT** request: `INTERNET`, `READ_PHONE_STATE`, `CALL_PHONE`, `MANAGE_EXTERNAL_STORAGE`, contacts, location, mic, or `BLUETOOTH_CONNECT` (headset removal is detected through `AudioManager`, which needs no Bluetooth permission).
 
 `<queries>` block for SIM Toolkit package names (Section 10.3) and for external-player intents.
 
@@ -315,7 +319,7 @@ Remembers last choice if the user enables "Go straight to Vault after unlock" in
   - After a **device reboot**, authentication is always required.
   - After **N failed attempts**, lockout applies (Section 9.3).
   - Changing the PIN/password, resetting, or changing security settings requires re-authentication even if the session is unlocked ("sensitive action re-auth", valid for 2 minutes).
-- **Media playback exception (configurable):** audio may continue in the background with lock-screen controls while the **UI** is locked; the notification shows neutral text (hide-title option, default on). A toggle **"Stop playback when the app locks"** (default off) lets the user choose. A second toggle **"Don't auto-lock while a video is playing in the foreground"** (default on) prevents locking mid-movie.
+- **Media playback exception (configurable):** music audio may continue in the background with lock-screen controls while the **app UI** is locked; the notification shows neutral text (hide-title option, default on). A toggle **"Stop playback when the app locks"** (default off) lets the user choose. **Separate from this, when the whole phone is locked, video and slideshows always pause (Section 33.3).** A second toggle **"Don't auto-lock while a video is playing in the foreground"** (default on) prevents locking mid-movie.
 
 ### 9.5 Screen privacy
 - `FLAG_SECURE` **on by default** (blocks screenshots, hides content in recents) with a Settings toggle.
@@ -327,7 +331,7 @@ Offer **"Reset app"**: clears the app's database, settings and credentials **onl
 
 ### 9.7 Optional extras (build if time allows, flagged in brain.md)
 - **Decoy PIN:** a second PIN opens a harmless empty/benign state.
-- **Intruder log:** local-only log of failed attempts (time, count). No camera capture unless the user explicitly enables it and grants permission.
+- **Intruder log + intruder photo:** full specification in **Section 32** (wrong-password photo, in-vault storage, alert on the owner's next successful login). Opt-in; needs the optional camera permission.
 - **Panic gesture:** quick double-shake or a fast back-press sequence returns to the cover screen and locks.
 - **Disguise icon/name** choices (Section 10.6).
 
@@ -343,7 +347,8 @@ On the **first launch**, right after the PIN is created, show a dedicated **"Set
 | **Display over other apps / full-screen** | **Not requested.** | n/a | No |
 
 Rules:
-- **Request only what the app truly uses.** Do not request storage, phone, SMS, contacts, location, camera, microphone or all-files access. State this on the screen: "Private Vault never asks for internet, contacts or location."
+- **Request only what the app truly uses.** Do not request storage, phone, SMS, contacts, location, microphone or all-files access. State this on the screen: "This app never asks for internet, contacts or location."
+- **Camera is the one extra, and it is optional:** add a row **"Camera (intruder photo)"** to the checklist table above. It is **not** requested during first-launch setup; it is requested the moment the user switches on "Intruder photo" (Section 32), with a rationale screen first. Status chip: Off / Granted / Denied.
 - Show the rationale **before** the system dialog. If the user denies, show what stops working and a button to retry; if "Don't ask again" was triggered, deep-link to the app's system settings page.
 - Handle permission revocation at any time (e.g. folder permission lost after SD card change): show a gentle "Access needed" screen with the fix, never a crash.
 - A **Permissions status card** in Settings shows live state for each item (Granted / Not granted) with one-tap fix.
@@ -383,7 +388,7 @@ Group into clear sections; each option has a title, a one-line description and a
 
 **Safety nets**
 - **Auto-exit idle timer on the vault** (separate from background auto-lock): lock after X minutes of no touches while the app is in the foreground and nothing is playing (Off / 5 / 10 / 15 minutes, default off).
-- **Intruder log** (time and number of failures only, local, viewable after unlocking).
+- **Intruder log and Intruder photo** (Section 32): time, attempt count, which entry point, and an optional front-camera photo; local only, viewable after unlocking, with an alert on the next successful login.
 - **Failed-attempt alert banner** on next successful unlock: "3 wrong attempts at 14:02" (default on).
 - **Decoy PIN** (Section 9.7).
 - **Reset app** (Section 9.6).
@@ -391,7 +396,7 @@ Group into clear sections; each option has a title, a one-line description and a
 
 **Playback & behavior**
 - Resume where you left off (on/off), auto-play next, background audio on/off, keep screen on during video, remember brightness per session, default orientation, default seek step, haptics, gesture toggles.
-- **Pause playback when headphones disconnect** (default on), **pause when another app takes audio focus** (default on).
+- **Headphone-disconnect protection** (stop + mute, default on) and **phone-lock pause** (Section 33), **pause when another app takes audio focus** (default on).
 - **Confirm before delete** (default on), **trash retention** (7/30/90 days/never), **"Ask where to save" for exports** (default on).
 - **Scan on app open** (default on), **scan only on Wi-Fi** is **not applicable** (no network), **scan hidden sub-folders** (default on).
 - **Data saver for thumbnails** (lower quality thumbnails, default off), **thumbnail cache limit** (256 MB / 512 MB / 1 GB / 2 GB).
@@ -530,14 +535,15 @@ Group into clear sections; each option has a title, a one-line description and a
 - **Resume position** per file (Room), "Continue watching" carousel, auto-mark watched at 95%.
 - **Subtitles:** load sidecar `.srt/.vtt/.ass`(if supported) from the same folder, or pick a file; style options (size, color, background, offset ±); embedded track selection.
 - **Audio tracks** selector (multi-language), audio delay adjust (±).
-- **Playlist/queue:** play next in folder, shuffle, repeat (off/one/all), next/previous.
+- **Playlist/queue:** play next in folder, shuffle, next/previous.
+- **Loop (repeat) modes:** full specification in **Section 33.1** (Off / Loop one / Loop all, A-B loop, loop count, remembered per item).
 - **Keep screen on** during playback; **sleep timer**.
 - **A-B loop**, frame-step (when paused), screenshot of current frame (saves **into the vault**, not the gallery).
 - **Picture-in-Picture** (optional, off by default for privacy; if enabled, auto-lock rules still apply).
 - Seek-bar **thumbnail previews** (generate sprite or use `MediaMetadataRetriever` at intervals; cache).
 - Video info sheet: container, codecs, resolution, fps, bitrate, size, duration, HDR flag.
 - Error screen with **real** error: container, codec, reason, and action buttons (Open with another player, Remove from index, Details).
-- Audio focus handling; pause on headphone unplug (`ACTION_AUDIO_BECOMING_NOISY`); Bluetooth/media-button support.
+- Audio focus handling; Bluetooth/media-button support. **Headphone disconnect and phone-lock behavior are defined in Section 33** (stop + mute volume to 0; pause video when the phone locks).
 - Caption: Cast/network features are **not** included.
 
 ### 12.3 Audio player
@@ -899,6 +905,200 @@ Everything here is **in addition** to the sections above. If a feature cannot be
 - **Phase 1** also creates the icon assets (Section 10.7) and the black splash.
 - **Phase 3** builds the cover screen **exactly** as in Section 8.1 and the matching post-auth panel.
 - **New Phase 11 (Enhancements):** Sections 31.2–31.8, delivered in small slices with the same "files created / not verified / stop" rule.
+
+---
+
+## 32. Intruder Photo & Owner Alert
+
+**Purpose:** if someone enters a wrong PIN/password, the app quietly takes a front-camera photo, stores it privately, and shows the real owner an alert the next time they unlock successfully. This is **opt-in** (Settings → Security → Intruder photo, default **off**, offered during onboarding), because it needs the optional camera permission.
+
+### 32.1 Trigger rules
+- **Which failures count:** a wrong PIN/password on the cover-screen unlock, the re-authentication prompts (Settings, delete, export, change PIN) and the decoy-PIN screen. **Biometric mismatches** count only if the user turns on "Also capture on fingerprint failure" (default off, since a fingerprint failure is usually the owner's wet finger).
+- **After how many wrong attempts:** user choice **1 (default) / 2 / 3**. One photo per qualifying attempt, with a minimum 3-second gap between captures so rapid tapping doesn't flood storage.
+- **No capture during a lockout countdown** (no attempts can be made then) and none when the camera permission is missing: the event is **still logged** (time, count, entry point), just without a photo.
+- **Owner-testing:** a **"Test intruder photo"** button in settings takes one sample so the user can see the result and verify it works on their phone.
+
+### 32.2 How the capture works (honest limits)
+- Use **CameraX `ImageCapture`** with the **front camera**, bound to the lifecycle of the unlock screen. Capture is **headless** (no preview shown), JPEG, long side 1280 px, quality ~80, EXIF orientation applied. Skip silently if no front camera exists.
+- The capture happens **only while the unlock screen is in the foreground** (Android 9+ blocks camera use from the background, so the app never tries). It is never triggered from a service.
+- **Be truthful in the UI text:** Android 12+ shows a small camera-in-use indicator and some devices make a shutter sound or briefly show a privacy dot. The app cannot hide these and **must not claim the capture is invisible or silent**. If another app holds the camera, the capture fails gracefully (event logged, no crash).
+- Never keep the camera open: open → capture → close within about 1.5 s. A timeout of 3 s cancels a stuck capture.
+
+### 32.3 Where the photos live ("privacy folder")
+- Saved into the **vault's protected folder** `.pv_intruders/` (dot-prefixed, containing a `.nomedia`), next to the vault root on the SD card, so they never show in Gallery, Google Photos or share pickers.
+- **Fallback:** if the SD card/folder is not reachable (card removed, permission lost), save to the app's **private internal storage** instead and move them to the vault folder on the next unlock. Never lose an event.
+- File name: `intruder_YYYYMMDD_HHmmss.jpg` (no personal data). The entry is stored in Room as `IntruderEventEntity(id, timestamp, attemptNumber, entryPoint[COVER|SETTINGS|DELETE|EXPORT|DECOY|BIOMETRIC], photoUri?, seen, deviceLockedState)`.
+- These photos are **not** part of the Photos library, search, albums or smart collections. They appear only in **Security → Intruder log**.
+- Retention: keep the latest **50** (user choice 25 / 50 / 100 / unlimited); auto-prune oldest; "Delete all" requires re-authentication.
+- **Reset app** never deletes the photos on the SD card; it clears the log entries and tells the user where the files remain.
+
+### 32.4 Alert for the real owner
+When the owner next **unlocks successfully**, before the post-auth panel opens:
+1. **Security alert sheet** (black bottom sheet, matches the cover style): "**2 wrong attempts while you were away**", the time of the latest one, the entry point, and up to 3 photo thumbnails with a count badge.
+2. Buttons: **View** (opens the Intruder log), **Dismiss** (marks as seen), and **Delete photos**.
+3. A small **red dot** stays on the Security entry in the vault until the events are seen.
+4. **Optional immediate notification** (default **off**): a local notification with neutral wording ("SIM Service: activity detected") and no photo on the lock screen. It is off by default because a visible notification can tip off the intruder. Respect `POST_NOTIFICATIONS`.
+- The app has no internet permission, so it **cannot send the photo to email or the cloud**. State this plainly in settings. (A future, opt-in "send to my email" feature would need the INTERNET permission and a clear disclosure; it is out of scope for now.)
+
+### 32.5 Intruder log screen
+- List of events with thumbnail, date/time, attempt number and entry point; tap for a full-screen viewer with **Share (leaves the vault prompt)**, **Export**, **Delete**.
+- Filters: unseen, last 7 days, by entry point. Empty state: "No failed attempts."
+- Viewing requires the session to be unlocked; **sensitive-action re-auth** applies to "Delete all" and "Export".
+
+### 32.6 Privacy & fairness notes (show in the setting's help text)
+- Photos stay on this phone only. Only use this on your own device.
+- If a family member mistypes the PIN, their photo is stored too, so keep "capture after 2–3 attempts" in mind for shared devices.
+
+---
+
+## 33. Playback Rules: Loop, Headphone Disconnect, Phone Lock
+
+### 33.1 Loop (repeat) for video and audio
+**Modes (same for both players), cycled by one button and also selectable from the options sheet:**
+| Mode | Icon | Behavior |
+|---|---|---|
+| **Off** | repeat (dimmed) | Play once; stop (or go to the next item if "Auto-play next" is on). |
+| **Loop one** | repeat-one (accent) | The current item restarts seamlessly from 0:00 when it ends (`Player.REPEAT_MODE_ONE`). |
+| **Loop all** | repeat (accent) | The whole queue/folder/playlist repeats (`Player.REPEAT_MODE_ALL`). |
+- **A-B loop** in **both** the video and audio players: tap **A** to mark the start, tap **B** to mark the end, the section repeats until cleared. Markers appear on the seek bar; **Clear** removes them. Works with speed changes.
+- **Loop count** (optional): "Loop N times" (2, 3, 5, 10, ∞) for Loop one, with a small counter badge ("Loop 2/5").
+- **Remember per item:** the last loop mode is saved per video/audio file (Room) and a **global default** exists in Settings → Playback (default Off). A user toggle controls whether loop resets when the app closes (default: remember).
+- **Where the controls are:** a clearly visible loop button in the video bottom bar, and in the audio full player and **mini player** (long-press for the A-B/loop-count options). Also exposed as a **custom action in the media notification** and via `MediaSession` repeat commands so Bluetooth/lock-screen controls work.
+- **Seamless looping:** for short clips, use `REPEAT_MODE_ONE` (no re-prepare) and avoid showing the controls overlay or a loading spinner on each loop. For audio, keep gapless behavior.
+- **Interactions:** the sleep timer and "Stop after this track" still win over loop; a headphone disconnect or phone-lock pause (below) pauses the loop and does not auto-resume unless the user sets it so.
+
+### 33.2 Headphone / earphone disconnect protection (privacy)
+**Rule:** if headphones or wireless earphones are **disconnected while video or audio is playing**, playback must **stop (pause) immediately and the media volume must be set to 0**, so nothing suddenly plays out loud.
+
+**Detection (use both, because neither alone is reliable on every phone):**
+1. `AudioManager.ACTION_AUDIO_BECOMING_NOISY` (Media3 `setHandleAudioBecomingNoisy(true)` as a first line of defense).
+2. `AudioManager.registerAudioDeviceCallback` → `onAudioDevicesRemoved` for output devices of type wired headphones/headset, USB headset, Bluetooth A2DP/SCO, BLE headset/broadcast (API 31+), and hearing aid. Only react if **that device was the active output when playback was running** (track the current routed device), so removing an unrelated accessory does nothing.
+3. Treat **Bluetooth turning off** or the earbuds going out of range the same way.
+
+**Action, in this order and within ~100 ms:**
+1. `player.pause()` and **set `player.volume = 0f`** (player-level mute as the instant guard).
+2. Set the media stream volume to 0: `AudioManager.setStreamVolume(STREAM_MUSIC, 0, FLAG_SHOW_UI)`. Skip with a clear on-screen message if the device uses fixed volume (`isVolumeFixed`). Because Android stores volume per output device, this mutes the **new** (speaker) route, which is what is wanted.
+3. Show a calm banner/toast: "Playback stopped: headphones disconnected" with a **Resume** button. Resume does **not** restore loudness automatically; if the system volume is 0 it first shows the volume HUD and asks "Volume is muted. Turn it up?" with a slider, so the user must raise it deliberately.
+4. Do **not** auto-restore the previous volume when headphones reconnect (avoids blasting the speaker if it was left high); the user raises volume themselves.
+
+**Applies to:** video player, audio player (including background playback and the mini player), photo-slideshow music, and any item playing from the queue. It also applies while the app is in the background (handled in the playback service, not only the UI).
+
+**Settings (Playback → Privacy):** "Stop when headphones disconnect" (default **on**); "Also set volume to 0" (default **on**); "Show Resume banner" (default on). If the user turns the volume option off, behavior falls back to pause only.
+
+**Honest notes (show in the setting's help text):** the app has no internet access, so everything is local playback ("streaming" in your request means any currently playing media). Some Bluetooth/LE Audio devices report removal late, so the mute can lag by a moment on those phones.
+
+### 33.3 Phone lock behavior
+**Rule:** when the **phone is locked** (screen turned off or the system lock screen appears), **all media pauses except music audio**.
+- **Detection:** `ACTION_SCREEN_OFF` plus `KeyguardManager.isKeyguardLocked()` checked in the playback service (registered at runtime) and in the UI; `ACTION_USER_PRESENT` for unlock.
+- **Pauses on phone lock:** **video** (always), photo **slideshows**, and any **video-with-audio-only mode**. The paused position is saved so the user continues exactly there.
+- **Keeps playing on phone lock:** **music audio** (audio files in the Audio section), with lock-screen controls and neutral notification text (title hidden by default).
+- **Audiobook/podcast files** (Section 31.5 audiobook mode) are treated as music audio for this rule so they keep playing, because they are audio. A single toggle **"Also pause audio when the phone locks"** (default **off**) makes even audio pause for people who want stricter privacy.
+- **After unlock:** playback does **not** auto-resume by default; the paused video waits at its position behind the app's own lock if the auto-lock timer has elapsed. A toggle **"Auto-resume after unlock"** (default off) exists for convenience.
+- **Interaction with other rules:** headphone-disconnect protection (33.2) applies to the music that keeps playing; the app auto-lock (Section 9.4) controls the UI only.
+- **Edge cases to handle:** phone call or alarm interrupts (audio focus), screen turning off while casting/PiP (not built), and a lock caused by the proximity sensor during a call (ignore proximity-only screen-off).
+
+### 33.4 Playback settings summary
+Settings → Playback → **Privacy & loop**: Loop default; Loop count; Stop when headphones disconnect; Also set volume to 0; Pause video when phone locks (always on, shown as info); Also pause audio when the phone locks; Auto-resume after unlock.
+
+---
+
+## 34. Layout, Spacing, Sizing & Responsive Design
+
+**Goal:** every screen has consistent margins, padding, gaps, borders and component sizes, and works on every phone, tablet, foldable and orientation without clipping, overlap or tiny tap targets. Define everything as **design tokens** once (`ui/theme/Dimens.kt`) and never use a hard-coded dp value inside a screen.
+
+### 34.1 Spacing scale (4-dp base)
+`space0=0, space1=4, space2=8, space3=12, space4=16, space5=20, space6=24, space7=32, space8=40, space9=48, space10=64` dp.
+- **Screen edge margin:** 16 dp (compact), 24 dp (medium), 32 dp (expanded); content is also inset by system bars/cutouts.
+- **Gap between sections:** 24 dp. **Gap between a title and its content:** 8–12 dp. **Gap between sibling items (rows/cards/chips):** 8–12 dp. **Grid gutters:** 4 dp for dense photo grids, 8 dp for video/album cards, 12 dp for cards on tablets.
+- **Card/sheet inner padding:** 16 dp (20 dp on expanded). **List row padding:** 16 dp horizontal, 12 dp vertical (min height 56 dp, 72 dp with thumbnail). **Dialog padding:** 24 dp. **Bottom sheet:** 24 dp top corners 28 dp, 16 dp content padding, drag handle 4×32 dp with 12 dp margin.
+
+### 34.2 Borders & shape (vault screens)
+- **Border width:** `border1 = 1 dp` (default), `border2 = 2 dp` (focus/selected). Borders are **inside** the element bounds so they never change layout size.
+- **Border color:** `outline` `#262E3D` (default), `outlineStrong` `#3A4560` (hover/pressed), accent gradient 2 dp (focused/selected), error `#F87171` 2 dp.
+- **Applied to:** buttons (outlined and tonal variants), text fields, cards, chips, list-row containers, album tiles, sheet containers, dialogs, mini player, player control clusters, keypad keys, toggles' track, and thumbnails in selection mode.
+- **Radii:** chips 12 dp, buttons 14 dp (or full pill for primary actions), text fields 14 dp, cards 20 dp, sheets/dialogs 28 dp, thumbnails 12 dp (8 dp in dense grids), keypad keys full circle.
+- **Cover screen exception (kept as designed):** the pure-black "SIM Service" screen stays borderless and card-less per Section 8.1; it still follows the spacing scale (20 dp horizontal padding, 12 dp row gap, 64 dp rows). A subtle 1 dp hairline divider `#1C1C1E` is the only line allowed there. *(If the user wants outlined rows on the cover, it is a one-token change, but it makes the screen look less like a plain SIM menu.)*
+
+### 34.3 Component sizing table
+| Component | Size / spec |
+|---|---|
+| **Primary button** | height **52 dp** (min width 120 dp), horizontal padding 24 dp, text 16 sp semibold, icon 20 dp + 8 dp gap |
+| **Secondary / outlined button** | height **48 dp**, padding 20 dp, 1 dp border, text 15 sp medium |
+| **Small / tonal button** | height **40 dp** (touch target still 48 dp via padding), text 14 sp |
+| **Icon button** | visual 24 dp icon in a **48×48 dp** target; 4 dp inner padding; optional 1 dp circular border in the player |
+| **Floating/primary action (FAB)** | 56 dp (extended: 56 dp height, 20 dp padding) |
+| **Text field** | height **56 dp**, 16 dp horizontal padding, label 12 sp, input 16 sp, 1 dp border (2 dp accent focus), helper/error text 12 sp with 4 dp top gap |
+| **Chip** | height **36 dp** (target 48), padding 12 dp, text 14 sp, 1 dp border, 8 dp gap between chips |
+| **Switch row** | row height **64 dp**, title 16 sp + description 13 sp, switch 52×32 dp, 16 dp padding |
+| **List item** | height 56 dp (one line) / 72 dp (two lines + thumb 48 dp) / 88 dp (video row with 96×64 dp thumb) |
+| **Top app bar** | height **56 dp** (+ status-bar inset); collapsing large title 112 dp; title 20 sp |
+| **Bottom bar (glass pill)** | height **64 dp**, floating 16 dp above the nav inset with 16 dp side margins, icon 24 dp, label 12 sp |
+| **Mini player** | height **64 dp**, 12 dp padding, 48 dp artwork, 1 dp top border, 12 dp radius |
+| **Keypad key** | **72 dp** diameter (compact) / 80 dp (large screens), 16 dp gap, digits 28 sp, 1 dp border |
+| **PIN dots** | 14 dp dots, 16 dp gap |
+| **Thumbnails** | photo grid cell = (width − gutters) / columns, 1:1; video 16:9 card; album tile 1:1 with 20 dp radius |
+| **Seek bar** | track 4 dp (12 dp when dragging), thumb 16 dp (24 dp active), touch height 48 dp |
+| **Player controls** | center play 72 dp (border 1 dp, glass), seek ±10 s 56 dp, bottom-bar icons 24 dp in 48 dp targets, 8 dp gaps |
+| **Dialog** | max width 560 dp, 24 dp padding, buttons 48 dp tall with 8 dp gap |
+| **Snackbar/toast** | 48 dp min height, 16 dp margin from edges, 12 dp radius |
+| **Section header** | 20 sp semibold, 24 dp top margin, 8 dp bottom margin |
+
+### 34.4 Typography sizing (all in `sp`, respects system font scale)
+Display 32/40, Headline 24/32, Title 20/28 (app bar) and 18/26 (section), Body 16/24 (default) and 15/22 (secondary), Label 14/20 (buttons/chips), Caption 12/16 (hints). **Minimum text size 12 sp; never use `dp` for text.** At 200 % font scale, rows and buttons **grow in height** (`heightIn(min=…)`), text wraps up to 2 lines (names use ellipsis only after 2 lines), and nothing is clipped.
+
+### 34.5 Responsive rules (Compose `WindowSizeClass`)
+| Class | Width | Layout |
+|---|---|---|
+| **Compact** | < 600 dp | Single column; bottom bar; photo grid 3–4 columns (portrait), 5–6 (landscape); video grid 1–2 columns; sheets full width. |
+| **Medium** | 600–839 dp | Navigation **rail** on the left; photo grid 4–6 columns; two-pane library + details when a landscape tablet; dialogs max 560 dp centered. |
+| **Expanded** | ≥ 840 dp | Rail + **two/three-pane** (list/grid, details, preview); photo grid 6–10 columns; forms and settings limited to a **max content width of 720 dp**, centered; players use side panels (queue, info). |
+- **Columns formula:** `columns = clamp(floor(availableWidth / minCellWidth), min, max)` with `minCellWidth` = 96 dp (photos, dense), 120 dp (default), 160 dp (video cards), 180 dp (album tiles); pinch-to-zoom changes the column count within the allowed range.
+- **Orientation:** every screen supports portrait and landscape and survives rotation with state preserved (`rememberSaveable`, ViewModels). Players switch to **landscape-optimized layouts** (controls spread along the sides, gesture zones unchanged, bars shrink to 48 dp).
+- **Foldables and multi-window:** use `androidx.window` fold posture; in **tabletop** posture the video sits on the top half with controls on the bottom half; support split-screen and freeform windows down to 320 dp width without clipping; resizable activity (`resizeableActivity=true`).
+- **Insets:** respect status/navigation bars, display cutouts, IME (keyboard pushes fields into view) and gesture-navigation insets; the cover and player screens are edge-to-edge.
+- **No fixed pixel widths.** Use weights, `fillMaxWidth`, `widthIn(max=…)`, `Modifier.aspectRatio`, and `LazyVerticalGrid(GridCells.Adaptive(minSize))`.
+- **Small phones** (320–360 dp wide, short screens < 640 dp tall): scroll instead of squeezing; keypad scales to 64 dp keys; bottom sheets get a scrollable body; never hide the primary action off-screen.
+
+### 34.6 Layout test matrix (must pass before release)
+| Device class | Size (dp) | Checks |
+|---|---|---|
+| Small phone | 320×568 and 360×640 | No clipping, keypad fits, buttons ≥ 48 dp, text wraps |
+| Normal phone | 392×800, 412×915 | Reference layouts for all screens |
+| Large phone / phablet | 430×932 | Grids use extra width, no stretched buttons |
+| Phone landscape | 800×360 | Players and cover screen usable, bars not covering content |
+| Small tablet | 600×960 | Rail + two-pane layouts, 720 dp max content width |
+| Large tablet | 1280×800 | Three-pane library, centered dialogs |
+| Foldable | 674×841 folded/inner, tabletop posture | Layout reflows without restart |
+| Accessibility | font scale 1.3× and 2.0×, display size large | Nothing overlaps or truncates the primary labels |
+Use Compose previews with `@PreviewScreenSizes`, `@PreviewFontScale` and `@PreviewLightDark`, plus screenshot tests for each class.
+
+### 34.7 Layout quality checklist (per screen)
+- Every element sits on the 4-dp grid and uses a spacing token.
+- Every interactive element has a **≥ 48×48 dp touch target**, a visible pressed/focused state and a content description.
+- Text, icon and container **padding is symmetric** unless intentional; icons are optically aligned to text baselines.
+- Borders are 1 dp (2 dp for focus/selected) and use the tokens above; no element has a shadow *and* a heavy border.
+- Lists and grids use `contentPadding` instead of outer margins so scrolled content isn't cut off at the edges, with `key`s for stable items.
+- No text overlaps media or controls; overlays on media use a scrim/gradient so white text meets 4.5:1 contrast.
+
+---
+
+## 35. Acceptance Criteria for Sections 32–34
+
+28. With **Intruder photo on**, a wrong password takes a front-camera photo, saves it in `.pv_intruders/` (with `.nomedia`) or the internal fallback, and logs the event; the photo never appears in the gallery, Photos section or share pickers.
+29. On the owner's next successful unlock, the Security alert sheet shows the number of failed attempts, time, entry point and photo thumbnails, with View / Dismiss / Delete; a red dot remains until seen.
+30. Intruder photo is **off by default**, requests the camera permission only when enabled (after a rationale), works as "log only" if permission is denied, and never claims to be silent or invisible.
+31. Video and audio each have **Loop Off / Loop one / Loop all** plus **A-B loop**; the mode shows in the player, mini player and notification, and is remembered per the setting.
+32. Disconnecting wired or Bluetooth headphones during playback **pauses immediately and sets media volume to 0**, shows a Resume banner, and does not auto-restore loudness.
+33. When the phone is locked, **video and slideshows pause and music audio keeps playing**; with "Also pause audio" on, audio pauses too. No auto-resume unless enabled.
+34. Every screen uses the spacing, border, radius and sizing tokens of Section 34; all touch targets are ≥ 48 dp; buttons and fields use the stated heights.
+35. The layout matrix in 34.6 passes: no clipping, overlap or horizontal scrolling at any listed size, in portrait and landscape, at font scale up to 2.0×.
+36. Phone rotation, split-screen and fold/unfold keep playback position, selection and scroll state.
+
+### Phase adjustments for Sections 32–34
+- **Phase 1:** create `Dimens.kt` and the border/radius/typography tokens from Section 34 **before** any screen.
+- **Phase 2:** intruder capture (CameraX), event storage and the alert sheet are built together with the PIN screen.
+- **Phases 5–7:** loop controls in every player, headphone-disconnect and phone-lock handling in the playback service.
+- **Phase 10:** run the layout test matrix and screenshot tests.
 
 ---
 

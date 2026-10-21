@@ -181,6 +181,17 @@ class MainActivity : FragmentActivity() {
 fun AppNavigation(viewModel: VaultViewModel) {
     val currentScreen by viewModel.currentScreen.collectAsState()
     val allMedia by viewModel.allMedia.collectAsState()
+    val showSecurityAlertSheet by viewModel.showSecurityAlertSheet.collectAsState()
+    val unseenEventsForAlert by viewModel.unseenEventsForAlert.collectAsState()
+
+    if (showSecurityAlertSheet && unseenEventsForAlert.isNotEmpty()) {
+        com.example.ui.components.SecurityAlertSheet(
+            unseenEvents = unseenEventsForAlert,
+            onDismiss = { viewModel.dismissSecurityAlert() },
+            onViewLog = { viewModel.navigateTo(Screen.IntruderLogs) },
+            onDeletePhotos = { viewModel.deleteIntruderPhotos() }
+        )
+    }
 
     when (val screen = currentScreen) {
         is Screen.PinEntry -> {

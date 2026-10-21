@@ -12,6 +12,8 @@ import com.example.data.repository.VaultRepository
 import com.example.security.DisguiseMode
 import com.example.security.PinSecurityManager
 import kotlinx.coroutines.flow.MutableStateFlow
+import com.example.data.model.IntruderEventEntity
+import com.example.security.IntruderCaptureManager
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,6 +59,19 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     val securityManager = PinSecurityManager(application)
     private val database = VaultDatabase.getInstance(application)
     val repository = VaultRepository(application, database.mediaDao(), securityManager)
+    val intruderCaptureManager = IntruderCaptureManager(application, securityManager)
+
+    val unseenIntruderCount: StateFlow<Int> = database.intruderEventDao().getUnseenCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val allIntruderEvents: StateFlow<List<IntruderEventEntity>> = database.intruderEventDao().getAllEvents()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _showSecurityAlertSheet = MutableStateFlow(false)
+    val showSecurityAlertSheet: StateFlow<Boolean> = _showSecurityAlertSheet.asStateFlow()
+
+    private val _unseenEventsForAlert = MutableStateFlow<List<IntruderEventEntity>>(emptyList())
+    val unseenEventsForAlert: StateFlow<List<IntruderEventEntity>> = _unseenEventsForAlert.asStateFlow()
 
     private val _currentScreen = MutableStateFlow<Screen>(
         if (securityManager.isDirectPinLaunchEnabled) {
@@ -324,6 +339,18 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     fun unlockVault() {
         _isUnlocked.value = true
+
+        // Check for unseen intruder events per Spec 32.4
+        viewModelScope.launch {
+            if (!securityManager.isDecoySessionActive) {
+                val unseen = database.intruderEventDao().getUnseenEventsSync()
+                if (unseen.isNotEmpty()) {
+                    _unseenEventsForAlert.value = unseen
+                    _showSecurityAlertSheet.value = true
+                }
+            }
+        }
+
         if (!securityManager.isFirstTimeSetupDone) {
             _currentScreen.value = Screen.FirstTimePermissions
         } else {
@@ -331,6 +358,29 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         }
         refreshNoMediaStatus()
         syncFolder()
+    }
+
+    fun dismissSecurityAlert() {
+        _showSecurityAlertSheet.value = false
+        viewModelScope.launch {
+            database.intruderEventDao().markAllAsSeen()
+        }
+    }
+
+    fun deleteIntruderPhotos() {
+        _showSecurityAlertSheet.value = false
+        viewModelScope.launch {
+            val events = database.intruderEventDao().getUnseenEventsSync()
+            events.forEach { event ->
+                event.photoUri?.let { uriStr ->
+                    try {
+                        val file = java.io.File(android.net.Uri.parse(uriStr).path ?: "")
+                        if (file.exists()) file.delete()
+                    } catch (e: Exception) { /* ignore */ }
+                }
+            }
+            database.intruderEventDao().clearAll()
+        }
     }
 
     fun lockVault() {

@@ -41,6 +41,13 @@ import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.LockPerson
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.VolumeMute
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import com.example.ui.theme.Dimens
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Sync
@@ -128,6 +135,41 @@ fun SettingsScreen(
     var directPinLaunch by remember { mutableStateOf(securityManager.isDirectPinLaunchEnabled) }
     var shakeToLock by remember { mutableStateOf(securityManager.isShakeToLockEnabled) }
     var sensitiveActionReauth by remember { mutableStateOf(securityManager.isSensitiveActionReauthRequired) }
+
+    // Spec 32: Intruder Photo Settings State
+    var intruderPhotoEnabled by remember { mutableStateOf(securityManager.isIntruderPhotoEnabled) }
+    var intruderThreshold by remember { mutableIntStateOf(securityManager.intruderThreshold) }
+    var captureOnBiometricFailure by remember { mutableStateOf(securityManager.isCaptureOnBiometricFailureEnabled) }
+    var intruderRetention by remember { mutableIntStateOf(securityManager.intruderRetentionCount) }
+    var showThresholdDialog by remember { mutableStateOf(false) }
+    var showRetentionDialog by remember { mutableStateOf(false) }
+    var isTestingCapture by remember { mutableStateOf(false) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val unseenIntruderCount by viewModel.unseenIntruderCount.collectAsState()
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            intruderPhotoEnabled = true
+            securityManager.isIntruderPhotoEnabled = true
+            Toast.makeText(context, "Intruder photo enabled", Toast.LENGTH_SHORT).show()
+        } else {
+            intruderPhotoEnabled = false
+            securityManager.isIntruderPhotoEnabled = false
+            Toast.makeText(context, "Camera permission denied; attempts logged without photo", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Spec 33: Playback Privacy Settings State
+    var stopOnHeadphoneDisconnect by remember { mutableStateOf(securityManager.isStopOnHeadphoneDisconnectEnabled) }
+    var setVolumeZeroOnDisconnect by remember { mutableStateOf(securityManager.isSetVolumeZeroOnDisconnectEnabled) }
+    var showResumeBanner by remember { mutableStateOf(securityManager.isShowResumeBannerEnabled) }
+    var pauseAudioOnLock by remember { mutableStateOf(securityManager.isPauseAudioOnLockEnabled) }
+    var autoResumeAfterUnlock by remember { mutableStateOf(securityManager.isAutoResumeAfterUnlockEnabled) }
+    var defaultLoopMode by remember { mutableIntStateOf(securityManager.defaultLoopMode) }
+    var showLoopDialog by remember { mutableStateOf(false) }
 
     var hasNotificationPermission by remember {
         mutableStateOf(
@@ -866,6 +908,388 @@ fun SettingsScreen(
             }
         }
 
+        // Spec 32: Intruder Photo & Front Camera Security
+        item {
+            Text(
+                text = "INTRUDER PHOTO & FRONT CAMERA (SPEC 32)",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextDim,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+                border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    // Intruder Photo Toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.CameraAlt, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Intruder Front-Camera Photo", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                Text("Capture front-camera photo on failed PIN attempts", fontSize = 12.sp, color = TextMuted)
+                            }
+                        }
+                        Switch(
+                            checked = intruderPhotoEnabled,
+                            onCheckedChange = { enable ->
+                                if (enable) {
+                                    val hasPerm = ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.CAMERA
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                    if (hasPerm) {
+                                        intruderPhotoEnabled = true
+                                        securityManager.isIntruderPhotoEnabled = true
+                                    } else {
+                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                    }
+                                } else {
+                                    intruderPhotoEnabled = false
+                                    securityManager.isIntruderPhotoEnabled = false
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkCarbon,
+                                checkedTrackColor = VaultEmerald
+                            )
+                        )
+                    }
+
+                    // Honest Privacy Disclaimer (Spec 32.2)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DarkCarbon)
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = "Transparency Notice: Android 12+ displays a system privacy dot when the camera is accessed. This app cannot hide system indicators or shutter sounds.",
+                            fontSize = 11.sp,
+                            color = TextDim,
+                            lineHeight = 15.sp
+                        )
+                    }
+
+                    // Capture Trigger Threshold
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showThresholdDialog = true }
+                            .padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Capture Trigger", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                            Text("Number of wrong attempts before photo", fontSize = 12.sp, color = TextMuted)
+                        }
+                        Text(
+                            text = "After $intruderThreshold attempt(s)",
+                            color = VaultEmerald,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Capture on Biometric Failure
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Capture on Fingerprint Mismatch", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                            Text("Also capture when biometric scan fails", fontSize = 12.sp, color = TextMuted)
+                        }
+                        Switch(
+                            checked = captureOnBiometricFailure,
+                            onCheckedChange = {
+                                captureOnBiometricFailure = it
+                                securityManager.isCaptureOnBiometricFailureEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkCarbon,
+                                checkedTrackColor = VaultEmerald
+                            )
+                        )
+                    }
+
+                    // Photo Retention Limit
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showRetentionDialog = true }
+                            .padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Photo Retention", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                            Text("Auto-prunes oldest captures beyond limit", fontSize = 12.sp, color = TextMuted)
+                        }
+                        Text(
+                            text = if (intruderRetention == 0) "Unlimited" else "Latest $intruderRetention",
+                            color = VaultEmerald,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Action Buttons: Test Photo & View Logs
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                isTestingCapture = true
+                                viewModel.intruderCaptureManager.testCapture(lifecycleOwner) { success, msg ->
+                                    isTestingCapture = false
+                                    Toast.makeText(
+                                        context,
+                                        if (success) "Sample photo captured successfully!" else "Capture failed: $msg",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            enabled = !isTestingCapture,
+                            colors = ButtonDefaults.buttonColors(containerColor = SurfaceBorder),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(imageVector = Icons.Default.CameraAlt, contentDescription = null, tint = VaultEmerald, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (isTestingCapture) "Capturing..." else "Test Photo", color = TextWhite, fontSize = 12.sp)
+                        }
+
+                        Button(
+                            onClick = { viewModel.navigateTo(Screen.IntruderLogs) },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (unseenIntruderCount > 0) DangerRed.copy(alpha = 0.8f) else DarkCarbon),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(imageVector = Icons.Default.Shield, contentDescription = null, tint = if (unseenIntruderCount > 0) Color.White else VaultEmerald, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (unseenIntruderCount > 0) "Logs ($unseenIntruderCount New)" else "View Logs",
+                                color = TextWhite,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Spec 33: Playback Rules: Loop, Headphone Disconnect, Phone Lock
+        item {
+            Text(
+                text = "PLAYBACK & PRIVACY RULES (SPEC 33)",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextDim,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+                border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(SurfaceBorder))
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    // Headphone Disconnect Pause
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.Headphones, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Stop on Headphone Disconnect", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                Text("Immediately pause playback when earphones unplug", fontSize = 12.sp, color = TextMuted)
+                            }
+                        }
+                        Switch(
+                            checked = stopOnHeadphoneDisconnect,
+                            onCheckedChange = {
+                                stopOnHeadphoneDisconnect = it
+                                securityManager.isStopOnHeadphoneDisconnectEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkCarbon,
+                                checkedTrackColor = VaultEmerald
+                            )
+                        )
+                    }
+
+                    // Set Volume to 0
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.VolumeMute, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Also Set Media Volume to 0", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                Text("Prevents media suddenly blasting out of phone speaker", fontSize = 12.sp, color = TextMuted)
+                            }
+                        }
+                        Switch(
+                            checked = setVolumeZeroOnDisconnect,
+                            onCheckedChange = {
+                                setVolumeZeroOnDisconnect = it
+                                securityManager.isSetVolumeZeroOnDisconnectEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkCarbon,
+                                checkedTrackColor = VaultEmerald
+                            )
+                        )
+                    }
+
+                    // Show Resume Banner
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Show Resume Banner on Disconnect", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                            Text("Presents on-screen resume prompt after disconnect", fontSize = 12.sp, color = TextMuted)
+                        }
+                        Switch(
+                            checked = showResumeBanner,
+                            onCheckedChange = {
+                                showResumeBanner = it
+                                securityManager.isShowResumeBannerEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkCarbon,
+                                checkedTrackColor = VaultEmerald
+                            )
+                        )
+                    }
+
+                    // Pause Video on Phone Lock (Always on info per Spec 33.3)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Pause Video on Phone Lock", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                            Text("Always on: Videos and slideshows pause when screen locks", fontSize = 12.sp, color = TextMuted)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(VaultEmerald.copy(alpha = 0.2f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text("Active", color = VaultEmerald, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // Also Pause Audio on Lock (Spec 33.3)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Also Pause Music Audio on Lock", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                            Text("By default, music keeps playing; enable for strict privacy", fontSize = 12.sp, color = TextMuted)
+                        }
+                        Switch(
+                            checked = pauseAudioOnLock,
+                            onCheckedChange = {
+                                pauseAudioOnLock = it
+                                securityManager.isPauseAudioOnLockEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkCarbon,
+                                checkedTrackColor = VaultEmerald
+                            )
+                        )
+                    }
+
+                    // Auto-Resume After Unlock
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Auto-Resume After Unlock", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                            Text("Automatically continue playback after unlock", fontSize = 12.sp, color = TextMuted)
+                        }
+                        Switch(
+                            checked = autoResumeAfterUnlock,
+                            onCheckedChange = {
+                                autoResumeAfterUnlock = it
+                                securityManager.isAutoResumeAfterUnlockEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkCarbon,
+                                checkedTrackColor = VaultEmerald
+                            )
+                        )
+                    }
+
+                    // Default Loop Mode (Spec 33.1)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showLoopDialog = true }
+                            .padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(imageVector = Icons.Default.Repeat, contentDescription = null, tint = VaultEmerald)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Default Repeat Mode", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextWhite)
+                                Text("Initial loop mode for video and audio players", fontSize = 12.sp, color = TextMuted)
+                            }
+                        }
+                        Text(
+                            text = when (defaultLoopMode) {
+                                1 -> "Loop One"
+                                2 -> "Loop All"
+                                else -> "Repeat Off"
+                            },
+                            color = VaultEmerald,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
         // Carrier Helplines
         item {
             Text(
@@ -1295,6 +1719,151 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = { showDisguiseDialog = false }) {
                     Text("Done", color = VaultEmerald)
+                }
+            },
+            containerColor = SurfaceCard
+        )
+    }
+
+    // Intruder Threshold Dialog (Spec 32.1)
+    if (showThresholdDialog) {
+        AlertDialog(
+            onDismissRequest = { showThresholdDialog = false },
+            title = { Text("Capture Trigger Threshold", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        1 to "After 1 wrong attempt (Default)",
+                        2 to "After 2 wrong attempts",
+                        3 to "After 3 wrong attempts"
+                    ).forEach { (count, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    intruderThreshold = count
+                                    securityManager.intruderThreshold = count
+                                    showThresholdDialog = false
+                                }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = intruderThreshold == count,
+                                onClick = {
+                                    intruderThreshold = count
+                                    securityManager.intruderThreshold = count
+                                    showThresholdDialog = false
+                                },
+                                colors = RadioButtonDefaults.colors(selectedColor = VaultEmerald)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(label, color = TextWhite, fontSize = 14.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showThresholdDialog = false }) {
+                    Text("Close", color = VaultEmerald)
+                }
+            },
+            containerColor = SurfaceCard
+        )
+    }
+
+    // Intruder Retention Limit Dialog (Spec 32.3)
+    if (showRetentionDialog) {
+        AlertDialog(
+            onDismissRequest = { showRetentionDialog = false },
+            title = { Text("Photo Retention Limit", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        25 to "Keep latest 25 captures",
+                        50 to "Keep latest 50 captures (Default)",
+                        100 to "Keep latest 100 captures",
+                        0 to "Unlimited (no auto-purge)"
+                    ).forEach { (count, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    intruderRetention = count
+                                    securityManager.intruderRetentionCount = count
+                                    showRetentionDialog = false
+                                }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = intruderRetention == count,
+                                onClick = {
+                                    intruderRetention = count
+                                    securityManager.intruderRetentionCount = count
+                                    showRetentionDialog = false
+                                },
+                                colors = RadioButtonDefaults.colors(selectedColor = VaultEmerald)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(label, color = TextWhite, fontSize = 14.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showRetentionDialog = false }) {
+                    Text("Close", color = VaultEmerald)
+                }
+            },
+            containerColor = SurfaceCard
+        )
+    }
+
+    // Playback Loop Default Dialog (Spec 33.1)
+    if (showLoopDialog) {
+        AlertDialog(
+            onDismissRequest = { showLoopDialog = false },
+            title = { Text("Default Repeat Mode", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        0 to "Repeat Off (Default)",
+                        1 to "Loop One (Seamless Single Item Repeat)",
+                        2 to "Loop All (Repeat Entire Queue / Folder)"
+                    ).forEach { (mode, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    defaultLoopMode = mode
+                                    securityManager.defaultLoopMode = mode
+                                    showLoopDialog = false
+                                }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = defaultLoopMode == mode,
+                                onClick = {
+                                    defaultLoopMode = mode
+                                    securityManager.defaultLoopMode = mode
+                                    showLoopDialog = false
+                                },
+                                colors = RadioButtonDefaults.colors(selectedColor = VaultEmerald)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(label, color = TextWhite, fontSize = 14.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLoopDialog = false }) {
+                    Text("Close", color = VaultEmerald)
                 }
             },
             containerColor = SurfaceCard

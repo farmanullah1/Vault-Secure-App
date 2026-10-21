@@ -3,7 +3,9 @@ package com.example.ui.screens
 import android.app.Activity
 import android.os.Build
 import android.view.HapticFeedbackConstants
-import android.widget.Toast
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import com.example.data.model.IntruderEntryPoint
+import com.example.ui.theme.Dimens
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -86,6 +88,7 @@ fun PinEntryScreen(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val securityManager = viewModel.securityManager
     val coroutineScope = rememberCoroutineScope()
 
@@ -142,7 +145,16 @@ fun PinEntryScreen(
                             viewModel.unlockVault()
                         }
                     },
-                    onError = { /* fallback to PIN keypad */ },
+                    onError = {
+                        if (securityManager.isCaptureOnBiometricFailureEnabled) {
+                            viewModel.intruderCaptureManager.onAuthFailure(
+                                lifecycleOwner = lifecycleOwner,
+                                attemptNumber = 1,
+                                entryPoint = IntruderEntryPoint.BIOMETRIC,
+                                isDeviceLocked = false
+                            )
+                        }
+                    },
                     onFallbackToPin = { /* stays on PIN keypad */ }
                 )
             }
@@ -220,10 +232,23 @@ fun PinEntryScreen(
                             }
                         }
                         is PinSecurityManager.VerificationResult.Failed -> {
+                            val attempts = 5 - result.attemptsRemainingBeforeLockout
+                            viewModel.intruderCaptureManager.onAuthFailure(
+                                lifecycleOwner = lifecycleOwner,
+                                attemptNumber = attempts,
+                                entryPoint = IntruderEntryPoint.COVER,
+                                isDeviceLocked = false
+                            )
                             errorMessage = "Incorrect PIN (${result.attemptsRemainingBeforeLockout} attempts remaining)"
                             enteredPin = ""
                         }
                         is PinSecurityManager.VerificationResult.LockedOut -> {
+                            viewModel.intruderCaptureManager.onAuthFailure(
+                                lifecycleOwner = lifecycleOwner,
+                                attemptNumber = 5,
+                                entryPoint = IntruderEntryPoint.COVER,
+                                isDeviceLocked = false
+                            )
                             lockoutMs = result.remainingMs
                             errorMessage = "Too many failed attempts"
                             enteredPin = ""

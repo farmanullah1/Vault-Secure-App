@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.net.Uri
 import android.os.BatteryManager
@@ -237,6 +239,7 @@ fun VideoPlayerScreen(
 
     // Double-tap seek feedback
     var seekFeedback by remember { mutableStateOf<String?>(null) }
+    var showHeadphoneDisconnectBanner by remember { mutableStateOf(false) }
 
     // Scrubbing timeline state
     var isScrubbing by remember { mutableStateOf(false) }
@@ -315,15 +318,17 @@ fun VideoPlayerScreen(
                 when (intent?.action) {
                     AudioManager.ACTION_AUDIO_BECOMING_NOISY -> {
                         exoPlayer?.pause()
+                        exoPlayer?.volume = 0f
                         isPlaying = false
                         try {
                             audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
                         } catch (e: Exception) {
                             // Volume fallback
                         }
+                        showHeadphoneDisconnectBanner = true
                     }
                     Intent.ACTION_SCREEN_OFF -> {
-                        // When phone screen locks, pause video playback immediately for privacy
+                        // When phone screen locks, pause video playback immediately for privacy (Spec 33.3)
                         exoPlayer?.pause()
                         isPlaying = false
                     }
@@ -335,6 +340,34 @@ fun VideoPlayerScreen(
             addAction(Intent.ACTION_SCREEN_OFF)
         }
         context.registerReceiver(noisyReceiver, noisyFilter)
+
+        val audioDeviceCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            object : AudioDeviceCallback() {
+                override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+                    val isHeadphoneRemoved = removedDevices?.any { dev ->
+                        dev.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                        dev.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                        dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                        dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                        dev.type == AudioDeviceInfo.TYPE_USB_HEADSET
+                    } ?: false
+
+                    if (isHeadphoneRemoved) {
+                        exoPlayer?.pause()
+                        exoPlayer?.volume = 0f
+                        isPlaying = false
+                        try {
+                            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+                        } catch (e: Exception) {}
+                        showHeadphoneDisconnectBanner = true
+                    }
+                }
+            }
+        } else null
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && audioDeviceCallback != null) {
+            audioManager?.registerAudioDeviceCallback(audioDeviceCallback, null)
+        }
 
         val player = ExoPlayer.Builder(context).build().apply {
             val mediaItem = MediaItem.fromUri(Uri.parse(currentItem.uriString))
@@ -375,6 +408,9 @@ fun VideoPlayerScreen(
                 context.unregisterReceiver(noisyReceiver)
             } catch (e: Exception) {
                 // Ignore if not registered
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && audioDeviceCallback != null) {
+                audioManager?.unregisterAudioDeviceCallback(audioDeviceCallback)
             }
             onSavePlaybackPosition?.invoke(currentItem.id, currentPosition)
             if (!playInBackground) {
@@ -1476,6 +1512,65 @@ fun VideoPlayerScreen(
                         ) {
                             Icon(imageVector = Icons.Default.PictureInPictureAlt, contentDescription = "PiP", tint = Color.White)
                         }
+                    }
+                }
+            }
+        }
+
+        // =========================================================================
+        // Headphone Disconnect Resume Banner (Spec 33.2)
+        // =========================================================================
+        AnimatedVisibility(
+            visible = showHeadphoneDisconnectBanner,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 90.dp)
+        ) {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2024)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF3A4560)),
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .padding(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = Icons.Default.Headphones,
+                            contentDescription = null,
+                            tint = Color(0xFF22D3EE),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Playback stopped: headphones disconnected",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            maxLines = 1
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            showHeadphoneDisconnectBanner = false
+                            exoPlayer?.volume = 1f
+                            exoPlayer?.play()
+                            isPlaying = true
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C5CFF)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
+                    ) {
+                        Text("Resume", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }

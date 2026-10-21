@@ -60,6 +60,21 @@ class PinSecurityManager(context: Context) {
         private const val KEY_SHAKE_TO_LOCK = "key_shake_to_lock"
         private const val KEY_SENSITIVE_ACTION_REAUTH = "key_sensitive_action_reauth"
 
+        // Master Spec v3 Section 32: Intruder Photo Settings
+        private const val KEY_INTRUDER_PHOTO_ENABLED = "key_intruder_photo_enabled"
+        private const val KEY_INTRUDER_THRESHOLD = "key_intruder_threshold"
+        private const val KEY_INTRUDER_CAPTURE_ON_BIOMETRIC = "key_intruder_capture_on_biometric"
+        private const val KEY_INTRUDER_RETENTION_COUNT = "key_intruder_retention_count"
+        private const val KEY_INTRUDER_IMMEDIATE_NOTIFICATION = "key_intruder_immediate_notification"
+
+        // Master Spec v3 Section 33: Playback Privacy & Loop Settings
+        private const val KEY_STOP_ON_HEADPHONE_DISCONNECT = "key_stop_on_headphone_disconnect"
+        private const val KEY_SET_VOLUME_ZERO_ON_DISCONNECT = "key_set_volume_zero_on_disconnect"
+        private const val KEY_SHOW_RESUME_BANNER = "key_show_resume_banner"
+        private const val KEY_PAUSE_AUDIO_ON_LOCK = "key_pause_audio_on_lock"
+        private const val KEY_AUTO_RESUME_AFTER_UNLOCK = "key_auto_resume_after_unlock"
+        private const val KEY_DEFAULT_LOOP_MODE = "key_default_loop_mode"
+
         private const val ITERATIONS = 12000
         private const val KEY_LENGTH = 256
         private const val SALT_LENGTH = 16
@@ -198,6 +213,52 @@ class PinSecurityManager(context: Context) {
     var isSensitiveActionReauthRequired: Boolean
         get() = prefs.getBoolean(KEY_SENSITIVE_ACTION_REAUTH, true)
         set(value) = prefs.edit().putBoolean(KEY_SENSITIVE_ACTION_REAUTH, value).apply()
+
+    // --- Master Spec v3 Section 32: Intruder Photo Settings ---
+    var isIntruderPhotoEnabled: Boolean
+        get() = prefs.getBoolean(KEY_INTRUDER_PHOTO_ENABLED, false) // Default OFF per Spec 32.1
+        set(value) = prefs.edit().putBoolean(KEY_INTRUDER_PHOTO_ENABLED, value).apply()
+
+    var intruderThreshold: Int
+        get() = prefs.getInt(KEY_INTRUDER_THRESHOLD, 1) // Default 1 attempt per Spec 32.1
+        set(value) = prefs.edit().putInt(KEY_INTRUDER_THRESHOLD, value.coerceIn(1, 3)).apply()
+
+    var isCaptureOnBiometricFailureEnabled: Boolean
+        get() = prefs.getBoolean(KEY_INTRUDER_CAPTURE_ON_BIOMETRIC, false) // Default OFF per Spec 32.1
+        set(value) = prefs.edit().putBoolean(KEY_INTRUDER_CAPTURE_ON_BIOMETRIC, value).apply()
+
+    var intruderRetentionCount: Int
+        get() = prefs.getInt(KEY_INTRUDER_RETENTION_COUNT, 50) // Default 50 per Spec 32.3
+        set(value) = prefs.edit().putInt(KEY_INTRUDER_RETENTION_COUNT, value).apply()
+
+    var isIntruderImmediateNotificationEnabled: Boolean
+        get() = prefs.getBoolean(KEY_INTRUDER_IMMEDIATE_NOTIFICATION, false) // Default OFF per Spec 32.4
+        set(value) = prefs.edit().putBoolean(KEY_INTRUDER_IMMEDIATE_NOTIFICATION, value).apply()
+
+    // --- Master Spec v3 Section 33: Playback Privacy Settings ---
+    var isStopOnHeadphoneDisconnectEnabled: Boolean
+        get() = prefs.getBoolean(KEY_STOP_ON_HEADPHONE_DISCONNECT, true) // Default ON per Spec 33.2
+        set(value) = prefs.edit().putBoolean(KEY_STOP_ON_HEADPHONE_DISCONNECT, value).apply()
+
+    var isSetVolumeZeroOnDisconnectEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SET_VOLUME_ZERO_ON_DISCONNECT, true) // Default ON per Spec 33.2
+        set(value) = prefs.edit().putBoolean(KEY_SET_VOLUME_ZERO_ON_DISCONNECT, value).apply()
+
+    var isShowResumeBannerEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_RESUME_BANNER, true) // Default ON per Spec 33.2
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_RESUME_BANNER, value).apply()
+
+    var isPauseAudioOnLockEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PAUSE_AUDIO_ON_LOCK, false) // Default OFF per Spec 33.3
+        set(value) = prefs.edit().putBoolean(KEY_PAUSE_AUDIO_ON_LOCK, value).apply()
+
+    var isAutoResumeAfterUnlockEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_RESUME_AFTER_UNLOCK, false) // Default OFF per Spec 33.3
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_RESUME_AFTER_UNLOCK, value).apply()
+
+    var defaultLoopMode: Int
+        get() = prefs.getInt(KEY_DEFAULT_LOOP_MODE, 0) // 0: OFF, 1: LOOP_ONE, 2: LOOP_ALL
+        set(value) = prefs.edit().putInt(KEY_DEFAULT_LOOP_MODE, value.coerceIn(0, 2)).apply()
 
     fun setPin(pin: String): Boolean {
         if (pin.length < 4) return false
