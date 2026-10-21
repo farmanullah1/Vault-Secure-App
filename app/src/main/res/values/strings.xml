@@ -13,7 +13,8 @@
 
     <!-- Post-Auth Actions -->
     <string name="identity_confirmed">Identity Confirmed</string>
-    <string name="call_helpline">Call Helpline (%1$s)</string>
+    <string name="call_helpline">Call Helpline</string>
+    <string name="call_helpline_format">Call Helpline (%1$s)</string>
     <string name="open_sim_toolkit">Open SIM Toolkit</string>
     <string name="open_vault">Open Vault</string>
     <string name="stk_unavailable_title">SIM Toolkit Not Available</string>

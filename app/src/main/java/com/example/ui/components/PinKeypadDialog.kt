@@ -85,6 +85,13 @@ fun PinKeypadDialog(
     val context = LocalContext.current
     val privacyDir = remember { File(context.filesDir, "privacy").apply { if (!exists()) mkdirs() } }
     var pendingCaptureUri by remember { mutableStateOf<Uri?>(null) }
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            Toast.makeText(context, "Intruder photo captured.", Toast.LENGTH_SHORT).show()
+        }
+    }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -95,13 +102,6 @@ fun PinKeypadDialog(
             }
         } else {
             Toast.makeText(context, "Camera permission denied – cannot capture intruder photo.", Toast.LENGTH_SHORT).show()
-        }
-    }
-    val takePictureLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success) {
-            Toast.makeText(context, "Intruder photo captured.", Toast.LENGTH_SHORT).show()
         }
     }
 

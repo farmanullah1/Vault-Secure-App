@@ -411,7 +411,7 @@ fun SimCoverScreen(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = stringResource(R.string.call_helpline, activeHelpline),
+                        text = if (activeHelpline.isNotBlank()) stringResource(R.string.call_helpline_format, activeHelpline) else stringResource(R.string.call_helpline),
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 15.sp,
                         color = Color.White

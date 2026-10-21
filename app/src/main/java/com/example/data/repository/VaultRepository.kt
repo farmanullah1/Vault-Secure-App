@@ -7,8 +7,18 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import androidx.documentfile.provider.DocumentFile
+import com.example.data.dao.MediaDao
 import com.example.data.dao.OperationJournalDao
+import com.example.data.model.MediaType
 import com.example.data.model.OperationJournalEntity
+import com.example.data.model.VaultMediaItem
+import com.example.security.PinSecurityManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
+import java.io.InputStream
+import java.io.OutputStream
+import java.security.SecureRandom
 import java.util.UUID
 
 data class ImportProgress(

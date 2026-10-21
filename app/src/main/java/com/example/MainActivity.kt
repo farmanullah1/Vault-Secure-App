@@ -180,6 +180,7 @@ class MainActivity : FragmentActivity() {
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun AppNavigation(viewModel: VaultViewModel) {
     val currentScreen by viewModel.currentScreen.collectAsState()

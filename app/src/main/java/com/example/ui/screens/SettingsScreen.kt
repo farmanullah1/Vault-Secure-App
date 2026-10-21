@@ -1082,7 +1082,7 @@ fun SettingsScreen(
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(imageVector = Icons.Default.Shield, contentDescription = null, tint = if (unseenIntruderCount > 0) Color.White else VaultEmerald, modifier = Modifier.size(16.dp))
+                            Icon(imageVector = Icons.Default.Shield, contentDescription = null, tint = if (unseenIntruderCount > 0) TextWhite else VaultEmerald, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = if (unseenIntruderCount > 0) "Logs ($unseenIntruderCount New)" else "View Logs",

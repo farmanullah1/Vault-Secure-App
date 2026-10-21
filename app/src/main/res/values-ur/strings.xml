@@ -10,7 +10,8 @@
     <string name="back_action">پیچھے</string>
 
     <string name="identity_confirmed">شناخت کی تصدیق ہو گئی</string>
-    <string name="call_helpline">ہیلپ لائن کال کریں (%1$s)</string>
+    <string name="call_helpline">ہیلپ لائن کال کریں</string>
+    <string name="call_helpline_format">ہیلپ لائن کال کریں (%1$s)</string>
     <string name="open_sim_toolkit">سم ٹول کٹ کھولیں</string>
     <string name="open_vault">والٹ کھولیں</string>
     <string name="stk_unavailable_title">سم ٹول کٹ دستیاب نہیں ہے</string>
